@@ -1,3 +1,38 @@
+local env = nil
+pcall(function() env = (getfenv and getfenv()) or _G end)
+if type(env) ~= "table" then env = {} end
+
+local shared = type(shared) == "table" and shared or {}
+
+local function safeWriteGlobal(key, value)
+    pcall(function() env[key] = value end)
+    pcall(function() getgenv()[key] = value end)
+    pcall(function() _G[key] = value end)
+    pcall(function() shared[key] = value end)
+end
+
+local function safeReadGlobal(key)
+    local v
+    pcall(function() v = getgenv()[key] end); if v ~= nil then return v end
+    pcall(function() v = _G[key] end);        if v ~= nil then return v end
+    pcall(function() v = shared[key] end);    if v ~= nil then return v end
+    pcall(function() v = env[key] end);       return v
+end
+
+local function hostFn(name, fallback)
+    local f = env[name]
+    if type(f) ~= "function" then pcall(function() f = _G[name] end) end
+    if type(f) ~= "function" then return fallback end
+    return f
+end
+
+local iskeypressed   = hostFn("iskeypressed",   function() return false end)
+local ismouse1pressed = hostFn("ismouse1pressed", function() return false end)
+local clock          = os and os.clock or hostFn("tick", function() return 0 end)
+
+local instanceId = {}
+safeWriteGlobal("RiseInstanceId", instanceId)
+
 local RiseUI = {}
 RiseUI.__index = RiseUI
 
@@ -158,7 +193,7 @@ function RiseUI:Notify(title, text, duration)
 		title = title or "Notification",
 		text = text or "",
 		duration = duration,
-		spawnTime = os.clock(),
+		spawnTime = clock(),
 		drawingObjects = {},
 	}
 
@@ -195,7 +230,7 @@ task.spawn(function()
 			local startX = screenSize.X - 270
 			local startY = screenSize.Y - 80
 
-			local currentTime = os.clock()
+			local currentTime = clock()
 			local aliveNotifs = {}
 
 			for i, notif in ipairs(activeNotifications) do
@@ -240,7 +275,6 @@ task.spawn(function()
 	end
 end)
 
-
 function RiseUI:CreateWindow(config)
 	local window = {
 		title = config.title or "Window",
@@ -254,7 +288,6 @@ function RiseUI:CreateWindow(config)
 	}
 
 	local shadow = newRoundedRect(WINDOW_RADIUS + 2, 0)
-
 	local body = newRoundedRect(WINDOW_RADIUS, 1)
 
 	local outline = Drawing.new("Square")
@@ -265,7 +298,6 @@ function RiseUI:CreateWindow(config)
 	outline.ZIndex = 2
 
 	local titleDivider = newRoundedRect(1, 3)
-
 	local sideDivider = newRoundedRect(1, 3)
 
 	local titleText = Drawing.new("Text")
@@ -864,4 +896,5 @@ function RiseUI:CreateWindow(config)
 	return window
 end
 
+safeWriteGlobal("RiseUI", RiseUI)
 return RiseUI
