@@ -370,15 +370,39 @@ local function createToggleHelper(tab, parentElements, text, default, callback)
 end
 
 local function createSliderHelper(tab, parentElements, text, default, min, step, max, suffix, callback)
+	local realDefault = default
+	local realMin = min
+	local realStep = step
+	local realMax = max
+	local realSuffix = suffix
+	local realCallback = callback
+
+	if type(realSuffix) == "function" then
+		realCallback = realSuffix
+		realSuffix = ""
+	end
+	if type(realMax) == "function" then
+		realCallback = realMax
+		realMin = default
+		realMax = min
+		realDefault = step
+		realStep = 1
+		realSuffix = ""
+	end
+	if type(realStep) == "function" then
+		realCallback = realStep
+		realStep = 1
+	end
+
 	local slider = {
 		type = "Slider",
 		text = text,
-		value = default or min,
-		min = min,
-		max = max,
-		step = step,
-		suffix = suffix or "",
-		callback = callback,
+		value = realDefault or realMin,
+		min = realMin,
+		max = realMax,
+		step = realStep or 1,
+		suffix = realSuffix or "",
+		callback = realCallback,
 		dragging = false,
 		drawingObjects = {},
 	}
