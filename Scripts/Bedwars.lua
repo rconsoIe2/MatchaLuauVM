@@ -7,6 +7,7 @@ local win = Lib:CreateWindow({
 
 local blatantTab = win:Tab("Blatant")
 local blatantSec = blatantTab:Section("Combat", "Left")
+local killAuraCategory = _G.hybrid and blatantSec:Category("Kill Aura") or nil
 
 local tab = win:Tab("Utility")
 local sec = tab:Section("ESP", "Left")
@@ -15,10 +16,19 @@ local kitEsp = sec:Category("Kit ESP")
 local itemEsp = sec:Category("Items ESP")
 local espOptions = sec:Category("Options")
 
+local autoKitSec = tab:Section("Automation", "Right")
+local autoKitCategory = _G.hybrid and autoKitSec:Category("Auto Kit") or nil
+
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
+
+local SwordHitEvent = _G.hybrid and ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("SwordHit") or nil
+local CollectEvent = _G.hybrid and ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("CollectCollectableEntity") or nil
+local PickUpBeeEvent = _G.hybrid and ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("PickUpBee") or nil
+local Inventories = ReplicatedStorage:WaitForChild("Inventories")
 
 local settings = {
     Player = false,
@@ -35,7 +45,15 @@ local settings = {
     emerald = false,
     Visible = false,
     Amount = false,
-    Distance = 500
+    Distance = 500,
+    Killaura = false,
+    HoldClick = false,
+    TargetEntities = true,
+    TeamCheck = true,
+    KillauraRange = 18,
+    HitSpeed = 0.1,
+    AutoKit = false,
+    AutoKitRange = 18
 }
 
 local trackedObjects = {}
@@ -58,12 +76,40 @@ local function getEquippedItem(char)
     return "None"
 end
 
+local function getEquippedWeapon()
+    local char = LocalPlayer.Character
+    if char then
+        for _, child in ipairs(char:GetChildren()) do
+            if child:IsA("Tool") and string.find(string.lower(child.Name), "sword") then
+                local inventoryFolder = Inventories:FindFirstChild(LocalPlayer.Name)
+                if inventoryFolder then
+                    local weaponObj = inventoryFolder:FindFirstChild(child.Name)
+                    if weaponObj then
+                        return weaponObj
+                    end
+                end
+            end
+        end
+    end
+    
+    local inventoryFolder = Inventories:FindFirstChild(LocalPlayer.Name)
+    if inventoryFolder then
+        for _, obj in ipairs(inventoryFolder:GetChildren()) do
+            if string.find(string.lower(obj.Name), "sword") then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
 local espConfigs = {
     Player = {
         validator = function(obj)
             if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and obj:FindFirstChild("Humanoid") then
+                if obj == LocalPlayer.Character or obj.Name == LocalPlayer.Name then return false end
                 local plr = Players:FindFirstChild(obj.Name)
-                return plr ~= nil and plr ~= LocalPlayer and obj ~= LocalPlayer.Character
+                return plr ~= nil and plr ~= LocalPlayer
             end
             return false
         end,
@@ -74,7 +120,8 @@ local espConfigs = {
     Entity = {
         validator = function(obj)
             if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") and obj:FindFirstChild("Humanoid") then
-                return Players:FindFirstChild(obj.Name) == nil and obj ~= LocalPlayer.Character
+                if obj == LocalPlayer.Character or obj.Name == LocalPlayer.Name then return false end
+                return Players:FindFirstChild(obj.Name) == nil
             end
             return false
         end,
@@ -275,7 +322,7 @@ RunService.Heartbeat:Connect(function()
     local root = char and char:FindFirstChild("HumanoidRootPart")
     
     for id, data in pairs(trackedObjects) do
-        if data.obj == char then
+        if data.obj == char or data.obj.Name == LocalPlayer.Name then
             data.box.Visible = false
             data.text.Visible = false
             data.amountText.Visible = false
@@ -371,34 +418,154 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-blatantSec:Toggle("InstaShoot", false, function(state)
+if _G.hybrid then
     task.spawn(function()
-        if not _G.InstantBowCache then
-            _G.InstantBowCache = getgc({
-                "CROSSBOW_FIRE_DELAY",
-                "HEADHUNTER_FIRE_DELAY", 
-                "fireDelaySec"
-            })
-        end
+        while true do
+            if settings.Killaura then
+                local allowedToHit = true
+                if settings.HoldClick and not ismouse1pressed() then
+                    allowedToHit = false
+                end
 
-        local crossbowDelay = state and 0.001 or 1.25
-        local headhunterDelay = state and 0.001 or 1.25
-        local fireDelaySec = state and 0.001 or 0.15
+                if allowedToHit then
+                    local char = LocalPlayer.Character
+                    local root = char and char:FindFirstChild("HumanoidRootPart")
+                    
+                    if root then
+                        local closestTarget = nil
+                        local targetPart = nil
+                        local shortestDistance = settings.KillauraRange
 
-        applygc(_G.InstantBowCache, "CROSSBOW_FIRE_DELAY", crossbowDelay)
-        applygc(_G.InstantBowCache, "HEADHUNTER_FIRE_DELAY", headhunterDelay)
-        applygc(_G.InstantBowCache, "fireDelaySec", fireDelaySec)
+                        for _, data in pairs(trackedObjects) do
+                            if data.part and data.part.Parent then
+                                if data.obj == char or data.obj.Name == LocalPlayer.Name then
+                                    continue
+                                end
 
-        if Lib.Notification or Lib.Notify then
-            local notifyFunc = Lib.Notification or Lib.Notify
-            notifyFunc(win, {
-                title = "InstaShoot",
-                content = state and "InstaShoot Enabled!" or "InstaShoot Disabled (Restored defaults)!",
-                duration = 3
-            })
+                                local isPlayer = (data.espType == "Player")
+                                local isEntity = (data.espType == "Entity")
+
+                                if isPlayer or (isEntity and settings.TargetEntities) then
+                                    local humanoid = data.part.Parent:FindFirstChildWhichIsA("Humanoid")
+                                    if humanoid and humanoid.Health > 0 then
+                                        if isPlayer and settings.TeamCheck then
+                                            local targetPlrInstance = Players:FindFirstChild(data.obj.Name)
+                                            if targetPlrInstance and targetPlrInstance.Team == LocalPlayer.Team then
+                                                continue
+                                            end
+                                        end
+
+                                        local dist = (data.part.Position - root.Position).Magnitude
+                                        if dist <= shortestDistance then
+                                            shortestDistance = dist
+                                            closestTarget = data.part.Parent
+                                            targetPart = data.part
+                                        end
+                                    end
+                                end
+                            end
+                        end
+
+                        if closestTarget and targetPart then
+                            local weapon = getEquippedWeapon()
+                            if weapon then
+                                SwordHitEvent:FireServer({
+                                    chargedAttack = { chargeRatio = 0 },
+                                    entityInstance = closestTarget,
+                                    validate = {
+                                        selfPosition = { value = root.Position },
+                                        targetPosition = { value = targetPart.Position }
+                                    },
+                                    weapon = weapon
+                                })
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(settings.HitSpeed)
         end
     end)
-end)
+
+    task.spawn(function()
+        while true do
+            if settings.AutoKit then
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                
+                if root then
+                    for _, data in pairs(trackedObjects) do
+                        if data.part and data.part.Parent then
+                            local dist = (data.part.Position - root.Position).Magnitude
+                            if dist <= settings.AutoKitRange then
+                                if data.espType == "Metal" then
+                                    local metalId = data.obj:GetAttribute("Id")
+                                    if metalId then
+                                        CollectEvent:FireServer({
+                                            id = metalId
+                                        })
+                                    end
+                                elseif data.espType == "Bee" then
+                                    local beeId = data.obj:GetAttribute("BeeId")
+                                    if beeId then
+                                        PickUpBeeEvent:FireServer({
+                                            beeId = beeId
+                                        })
+                                    end
+                                elseif data.espType == "Star" then
+                                    local starId = data.obj:GetAttribute("Id")
+                                    if starId then
+                                        CollectEvent:FireServer({
+                                            id = starId,
+                                            collectableName = data.obj.Name
+                                        })
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+end
+
+if killAuraCategory then
+    killAuraCategory:Toggle("Enabled", false, function(state)
+        settings.Killaura = state
+    end)
+
+    killAuraCategory:Toggle("Hold Click", false, function(state)
+        settings.HoldClick = state
+    end)
+
+    killAuraCategory:Toggle("Team Check", true, function(state)
+        settings.TeamCheck = state
+    end)
+
+    killAuraCategory:Toggle("Target Entities", true, function(state)
+        settings.TargetEntities = state
+    end)
+
+    killAuraCategory:Slider("Range", 18, 5, 1, 22, function(value)
+        settings.KillauraRange = value
+    end)
+
+    killAuraCategory:Slider("Hit Speed", 0.1, 0.01, 0.01, 1.0, function(value)
+        settings.HitSpeed = value
+    end)
+end
+
+if autoKitCategory then
+    autoKitCategory:Toggle("Enabled", false, function(state)
+        settings.AutoKit = state
+    end)
+
+    autoKitCategory:Slider("Collection Range", 18, 5, 1, 20, function(value)
+        settings.AutoKitRange = value
+    end)
+end
 
 gameEsp:Toggle("Player ESP", false, function(state) settings.Player = state end)
 gameEsp:Toggle("Bed ESP", false, function(state) settings.Bed = state end)
