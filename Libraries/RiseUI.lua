@@ -5,25 +5,25 @@ if type(env) ~= "table" then env = {} end
 local shared = type(shared) == "table" and shared or {}
 
 local function safeWriteGlobal(key, value)
-    pcall(function() env[key] = value end)
-    pcall(function() getgenv()[key] = value end)
-    pcall(function() _G[key] = value end)
-    pcall(function() shared[key] = value end)
+	pcall(function() env[key] = value end)
+	pcall(function() getgenv()[key] = value end)
+	pcall(function() _G[key] = value end)
+	pcall(function() shared[key] = value end)
 end
 
 local function safeReadGlobal(key)
-    local v
-    pcall(function() v = getgenv()[key] end); if v ~= nil then return v end
-    pcall(function() v = _G[key] end);        if v ~= nil then return v end
-    pcall(function() v = shared[key] end);    if v ~= nil then return v end
-    pcall(function() v = env[key] end);       return v
+	local v
+	pcall(function() v = getgenv()[key] end); if v ~= nil then return v end
+	pcall(function() v = _G[key] end);        if v ~= nil then return v end
+	pcall(function() v = shared[key] end);    if v ~= nil then return v end
+	pcall(function() v = env[key] end);       return v
 end
 
 local function hostFn(name, fallback)
-    local f = env[name]
-    if type(f) ~= "function" then pcall(function() f = _G[name] end) end
-    if type(f) ~= "function" then return fallback end
-    return f
+	local f = env[name]
+	if type(f) ~= "function" then pcall(function() f = _G[name] end) end
+	if type(f) ~= "function" then return fallback end
+	return f
 end
 
 local iskeypressed   = hostFn("iskeypressed",   function() return false end)
@@ -446,6 +446,11 @@ local function createSliderHelper(tab, parentElements, text, default, min, step,
 end
 
 local function createDropdownHelper(tab, parentElements, text, options, default, callback)
+	if type(default) == "function" then
+		callback = default
+		default = options and options[1] or ""
+	end
+
 	local dropdown = {
 		type = "Dropdown",
 		text = text,
@@ -467,7 +472,7 @@ local function createDropdownHelper(tab, parentElements, text, options, default,
 	local box = newRoundedRect(ELEMENT_RADIUS, 5)
 
 	local valueTxt = Drawing.new("Text")
-	valueTxt.Text = dropdown.value
+	valueTxt.Text = tostring(dropdown.value)
 	valueTxt.Size = 12
 	valueTxt.Color = Theme.TextSecondary
 	valueTxt.Visible = false
@@ -489,7 +494,7 @@ local function createDropdownHelper(tab, parentElements, text, options, default,
 	for _, optionText in ipairs(dropdown.options) do
 		local rowBg = newRoundedRect(ELEMENT_RADIUS, 200)
 		local rowTxt = Drawing.new("Text")
-		rowTxt.Text = optionText
+		rowTxt.Text = tostring(optionText)
 		rowTxt.Size = 12
 		rowTxt.Color = Theme.TextPrimary
 		rowTxt.Visible = false
@@ -555,6 +560,7 @@ function RiseUI:CreateWindow(config)
 			name = name,
 			sections = { Left = {}, Right = {} },
 			drawingObjects = {},
+			scrollOffset = 0,
 		}
 
 		local tabBtn = Drawing.new("Text")
@@ -658,6 +664,8 @@ function RiseUI:CreateWindow(config)
 
 	task.spawn(function()
 		local lastMouseState = false
+		local lastScrollStateUp = false
+		local lastScrollStateDown = false
 
 		while true do
 			local menuTogglePressed = iskeypressed(RiseUI.ToggleKey)
@@ -762,6 +770,20 @@ function RiseUI:CreateWindow(config)
 				true
 			)
 
+			local currentScrollUp = iskeypressed(0x21)
+			local currentScrollDown = iskeypressed(0x22)
+			
+			if window.activeTab and isMouseInArea(window.position + Vector2.new(142, 42), Vector2.new(window.size.X - 152, window.size.Y - 52)) then
+				if currentScrollUp and not lastScrollStateUp then
+					window.activeTab.scrollOffset = math.clamp(window.activeTab.scrollOffset - 24, 0, 2000)
+				elseif currentScrollDown and not lastScrollStateDown then
+					window.activeTab.scrollOffset = math.clamp(window.activeTab.scrollOffset + 24, 0, 2000)
+				end
+			end
+			
+			lastScrollStateUp = currentScrollUp
+			lastScrollStateDown = currentScrollDown
+
 			local tabY = 46
 			for _, tabData in ipairs(window.tabs) do
 				local tab = tabData.tab
@@ -786,6 +808,9 @@ function RiseUI:CreateWindow(config)
 				tabY = tabY + 26
 			end
 
+			local viewTop = window.position.Y + 42
+			local viewBottom = window.position.Y + window.size.Y - 10
+
 			for _, tabData in ipairs(window.tabs) do
 				local tab = tabData.tab
 				local isCurrent = (window.activeTab == tab)
@@ -803,159 +828,208 @@ function RiseUI:CreateWindow(config)
 						end
 					end
 				else
-					for _, obj in ipairs(tab.drawingObjects) do
-						obj.Visible = true
-					end
+					local maxCalculatedY = 50
 
-					local function layoutColumn(sections, xOffset)
-						local y = 50
+					local function layoutColumn(sections, xOffset, dryRun)
+						local y = 50 - tab.scrollOffset
 						for _, sec in ipairs(sections) do
+							local renderTitle = (y >= 50 - tab.scrollOffset)
 							local titleObj = sec.drawingObjects[1]
+							
+							local actualY = window.position.Y + y
+							local titleVisible = not dryRun and (actualY >= viewTop and actualY <= viewBottom - 16)
+							
 							if titleObj then
-								titleObj.Position = window.position + Vector2.new(xOffset, y)
-								sec.underline:Set(window.position + Vector2.new(xOffset, y + 16), Vector2.new(34, 2), Theme.AccentSecondary, true)
+								if titleVisible then
+									titleObj.Position = window.position + Vector2.new(xOffset, y)
+									titleObj.Visible = true
+									sec.underline:Set(window.position + Vector2.new(xOffset, y + 16), Vector2.new(34, 2), Theme.AccentSecondary, true)
+								else
+									if not dryRun then
+										titleObj.Visible = false
+										sec.underline:Set(Vector2.new(0, 0), Vector2.new(0, 0), Theme.Stroke, false)
+									end
+								end
 								y = y + 24
 							end
 
 							local function renderElementList(elements, indent)
 								for _, el in ipairs(elements) do
+									local itemY = window.position.Y + y
+									
 									if el.type == "Toggle" then
-										local lbl = el.drawingObjects[1]
-										local bind = el.bindLbl
-										lbl.Visible = true
-										lbl.Position = window.position + Vector2.new(xOffset + indent, y)
+										local elHeight = 24
+										local isWithinBounds = (itemY >= viewTop and itemY + elHeight <= viewBottom)
+										
+										if isWithinBounds and not dryRun then
+											local lbl = el.drawingObjects[1]
+											local bind = el.bindLbl
+											lbl.Visible = true
+											lbl.Position = window.position + Vector2.new(xOffset + indent, y)
 
-										local target = el.state and 1 or 0
-										el.displayState = lerp(el.displayState, target, 0.35)
+											local target = el.state and 1 or 0
+											el.displayState = lerp(el.displayState, target, 0.35)
 
-										local textWidth = lbl.TextBounds and lbl.TextBounds.X or (#el.text * 7)
-										local boxPos = window.position + Vector2.new(xOffset + indent + textWidth + 14, y - 1)
-										local boxSize = Vector2.new(16, 16)
-										local boxColor = lerpColor(Theme.Stroke, Theme.Accent, el.displayState)
-										el.box:Set(boxPos, boxSize, boxColor, true)
+											local textWidth = lbl.TextBounds and lbl.TextBounds.X or (#el.text * 7)
+											local boxPos = window.position + Vector2.new(xOffset + indent + textWidth + 14, y - 1)
+											local boxSize = Vector2.new(16, 16)
+											local boxColor = lerpColor(Theme.Stroke, Theme.Accent, el.displayState)
+											el.box:Set(boxPos, boxSize, boxColor, true)
 
-										if el.displayState > 0.15 then
-											el.checkA.From = boxPos + Vector2.new(3, 8)
-											el.checkA.To = boxPos + Vector2.new(6, 12)
-											el.checkB.From = boxPos + Vector2.new(6, 12)
-											el.checkB.To = boxPos + Vector2.new(13, 4)
-											el.checkA.Transparency = 1 - el.displayState
-											el.checkB.Transparency = 1 - el.displayState
-											el.checkA.Visible = true
-											el.checkB.Visible = true
+											if el.displayState > 0.15 then
+												el.checkA.From = boxPos + Vector2.new(3, 8)
+												el.checkA.To = boxPos + Vector2.new(6, 12)
+												el.checkB.From = boxPos + Vector2.new(6, 12)
+												el.checkB.To = boxPos + Vector2.new(13, 4)
+												el.checkA.Transparency = 1 - el.displayState
+												el.checkB.Transparency = 1 - el.displayState
+												el.checkA.Visible = true
+												el.checkB.Visible = true
+											else
+												el.checkA.Visible = false
+												el.checkB.Visible = false
+											end
+
+											local clickWidth = textWidth + 14 + boxSize.X
+											if mouseClicked and isMouseInArea(lbl.Position, Vector2.new(clickWidth, 16)) then
+												el.state = not el.state
+												if el.callback then el.callback(el.state) end
+											end
+
+											if bind then
+												bind.Visible = true
+												bind.Position = boxPos + Vector2.new(22, 1)
+											end
 										else
-											el.checkA.Visible = false
-											el.checkB.Visible = false
-										end
-
-										local clickWidth = textWidth + 14 + boxSize.X
-										if mouseClicked and isMouseInArea(lbl.Position, Vector2.new(clickWidth, 16)) then
-											el.state = not el.state
-											if el.callback then el.callback(el.state) end
-										end
-
-										if bind then
-											bind.Visible = true
-											bind.Position = boxPos + Vector2.new(22, 1)
+											if not dryRun then hideElementVisuals(el) if el.drawingObjects[1] then el.drawingObjects[1].Visible = false end if el.bindLbl then el.bindLbl.Visible = false end end
 										end
 										y = y + 24
 									elseif el.type == "Slider" then
-										local lbl = el.drawingObjects[1]
-										lbl.Visible = true
-										lbl.Position = window.position + Vector2.new(xOffset + indent, y)
+										local elHeight = 40
+										local isWithinBounds = (itemY >= viewTop and itemY + elHeight <= viewBottom)
 
-										local trackPos = window.position + Vector2.new(xOffset + indent, y + 20)
-										local trackSize = Vector2.new(160 - indent, 4)
-										el.track:Set(trackPos, trackSize, Theme.Stroke, true)
+										if isWithinBounds and not dryRun then
+											local lbl = el.drawingObjects[1]
+											lbl.Visible = true
+											lbl.Position = window.position + Vector2.new(xOffset + indent, y)
 
-										local percent = (el.value - el.min) / (el.max - el.min)
-										el.fill:Set(trackPos, Vector2.new(trackSize.X * percent, trackSize.Y), Theme.Accent, true)
+											local trackPos = window.position + Vector2.new(xOffset + indent, y + 20)
+											local trackSize = Vector2.new(160 - indent, 4)
+											el.track:Set(trackPos, trackSize, Theme.Stroke, true)
 
-										local thumbPos = trackPos + Vector2.new(trackSize.X * percent, trackSize.Y / 2)
-										el.thumb.Position = thumbPos
-										el.thumb.Visible = true
-										el.thumbRing.Position = thumbPos
-										el.thumbRing.Visible = true
+											local percent = (el.value - el.min) / (el.max - el.min)
+											el.fill:Set(trackPos, Vector2.new(trackSize.X * percent, trackSize.Y), Theme.Accent, true)
 
-										if currentMouseState and (el.dragging or (mouseClicked and isMouseInArea(trackPos - Vector2.new(0, 6), trackSize + Vector2.new(0, 12)))) then
-											el.dragging = true
-											local relX = math.clamp(mousePos.X - trackPos.X, 0, trackSize.X)
-											local rawVal = el.min + ((relX / trackSize.X) * (el.max - el.min))
-											local exactVal = math.round(rawVal / el.step) * el.step
-											exactVal = math.clamp(exactVal, el.min, el.max)
+											local thumbPos = trackPos + Vector2.new(trackSize.X * percent, trackSize.Y / 2)
+											el.thumb.Position = thumbPos
+											el.thumb.Visible = true
+											el.thumbRing.Position = thumbPos
+											el.thumbRing.Visible = true
 
-											if exactVal ~= el.value then
-												el.value = exactVal
-												lbl.Text = el.text .. ": " .. tostring(el.value) .. el.suffix
-												if el.callback then el.callback(el.value) end
-											end
-										end
-										if not currentMouseState then
-											el.dragging = false
-										end
-										y = y + 40
-									elseif el.type == "Dropdown" then
-										local lbl = el.drawingObjects[1]
-										lbl.Visible = true
-										lbl.Position = window.position + Vector2.new(xOffset + indent, y)
+											if currentMouseState and (el.dragging or (mouseClicked and isMouseInArea(trackPos - Vector2.new(0, 6), trackSize + Vector2.new(0, 12)))) then
+												el.dragging = true
+												local relX = math.clamp(mousePos.X - trackPos.X, 0, trackSize.X)
+												local rawVal = el.min + ((relX / trackSize.X) * (el.max - el.min))
+												local exactVal = math.round(rawVal / el.step) * el.step
+												exactVal = math.clamp(exactVal, el.min, el.max)
 
-										local boxPos = window.position + Vector2.new(xOffset + indent, y + 18)
-										local boxSize = Vector2.new(190 - indent, 26)
-										el.box:Set(boxPos, boxSize, Theme.Elevated, true)
-
-										el.valueTxt.Position = boxPos + Vector2.new(10, 7)
-										el.valueTxt.Text = el.value
-										el.valueTxt.Visible = true
-
-										el.arrow.Position = boxPos + Vector2.new(boxSize.X - 22, 7)
-										el.arrow.Text = el.open and "^" or "v"
-										el.arrow.Visible = true
-
-										if mouseClicked and isMouseInArea(boxPos, boxSize) then
-											el.open = not el.open
-										end
-
-										if el.open then
-											for i, row in ipairs(el.rows) do
-												local rowPos = boxPos + Vector2.new(0, boxSize.Y + (i - 1) * 24)
-												local rowSize = Vector2.new(boxSize.X, 24)
-												local hovered = isMouseInArea(rowPos, rowSize)
-												local rowColor = hovered and Theme.Accent or Theme.Elevated
-
-												row.bg:Set(rowPos, rowSize, rowColor, true)
-												row.txt.Position = rowPos + Vector2.new(10, 5)
-												row.txt.Visible = true
-
-												if mouseClicked and hovered then
-													el.value = row.value
-													el.open = false
+												if exactVal ~= el.value then
+													el.value = exactVal
+													lbl.Text = el.text .. ": " .. tostring(el.value) .. el.suffix
 													if el.callback then el.callback(el.value) end
 												end
 											end
-											y = y + ( #el.rows * 24 )
-										else
-											for _, row in ipairs(el.rows) do
-												row.bg:Set(Vector2.new(0, 0), Vector2.new(0, 0), Theme.Stroke, false)
-												row.txt.Visible = false
+											if not currentMouseState then
+												el.dragging = false
 											end
+										else
+											if not dryRun then hideElementVisuals(el) if el.drawingObjects[1] then el.drawingObjects[1].Visible = false end end
+										end
+										y = y + 40
+									elseif el.type == "Dropdown" then
+										local boxSize = Vector2.new(190 - indent, 26)
+										local expandedHeight = boxSize.Y + 18 + (el.open and (#el.options * 24) or 0)
+										local isWithinBounds = (itemY >= viewTop and itemY + 44 <= viewBottom)
+
+										if isWithinBounds and not dryRun then
+											local lbl = el.drawingObjects[1]
+											lbl.Visible = true
+											lbl.Position = window.position + Vector2.new(xOffset + indent, y)
+
+											local boxPos = window.position + Vector2.new(xOffset + indent, y + 18)
+											el.box:Set(boxPos, boxSize, Theme.Elevated, true)
+
+											el.valueTxt.Position = boxPos + Vector2.new(10, 7)
+											el.valueTxt.Text = tostring(el.value)
+											el.valueTxt.Visible = true
+
+											el.arrow.Position = boxPos + Vector2.new(boxSize.X - 22, 7)
+											el.arrow.Text = el.open and "^" or "v"
+											el.arrow.Visible = true
+
+											if mouseClicked and isMouseInArea(boxPos, boxSize) then
+												el.open = not el.open
+											end
+
+											if el.open then
+												for i, row in ipairs(el.rows) do
+													local rowPos = boxPos + Vector2.new(0, boxSize.Y + (i - 1) * 24)
+													local rowSize = Vector2.new(boxSize.X, 24)
+													
+													if rowPos.Y >= viewTop and rowPos.Y + rowSize.Y <= viewBottom then
+														local hovered = isMouseInArea(rowPos, rowSize)
+														local rowColor = hovered and Theme.Accent or Theme.Elevated
+
+														row.bg:Set(rowPos, rowSize, rowColor, true)
+														row.txt.Position = rowPos + Vector2.new(10, 5)
+														row.txt.Visible = true
+
+														if mouseClicked and hovered then
+															el.value = row.value
+															el.open = false
+															if el.callback then el.callback(el.value) end
+														end
+													else
+														row.bg:Set(Vector2.new(0, 0), Vector2.new(0, 0), Theme.Stroke, false)
+														row.txt.Visible = false
+													end
+												end
+												y = y + ( #el.rows * 24 )
+											else
+												for _, row in ipairs(el.rows) do
+													row.bg:Set(Vector2.new(0, 0), Vector2.new(0, 0), Theme.Stroke, false)
+													row.txt.Visible = false
+												end
+											end
+										else
+											if not dryRun then hideElementVisuals(el) if el.drawingObjects[1] then el.drawingObjects[1].Visible = false end end
 										end
 
 										y = y + 18 + boxSize.Y
 									elseif el.type == "Category" then
-										local lbl = el.drawingObjects[1]
-										lbl.Visible = true
-										lbl.Position = window.position + Vector2.new(xOffset + indent + 8, y + 5)
-
-										local boxPos = window.position + Vector2.new(xOffset + indent, y)
 										local boxSize = Vector2.new(190 - indent, 24)
-										el.box:Set(boxPos, boxSize, Theme.Elevated, true)
+										local isWithinBounds = (itemY >= viewTop and itemY + boxSize.Y <= viewBottom)
 
-										el.arrow.Position = boxPos + Vector2.new(boxSize.X - 20, 5)
-										el.arrow.Text = el.open and "^" or "v"
-										el.arrow.Visible = true
+										if isWithinBounds and not dryRun then
+											local lbl = el.drawingObjects[1]
+											lbl.Visible = true
+											lbl.Position = window.position + Vector2.new(xOffset + indent + 8, y + 5)
 
-										if mouseClicked and isMouseInArea(boxPos, boxSize) then
-											el.open = not el.open
+											local boxPos = window.position + Vector2.new(xOffset + indent, y)
+											el.box:Set(boxPos, boxSize, Theme.Elevated, true)
+
+											el.arrow.Position = boxPos + Vector2.new(boxSize.X - 20, 5)
+											el.arrow.Text = el.open and "^" or "v"
+											el.arrow.Visible = true
+
+											if mouseClicked and isMouseInArea(boxPos, boxSize) then
+												el.open = not el.open
+											end
+										else
+											if not dryRun then
+												hideElementVisuals(el)
+												if el.drawingObjects[1] then el.drawingObjects[1].Visible = false end
+											end
 										end
 
 										y = y + boxSize.Y + 6
@@ -963,11 +1037,13 @@ function RiseUI:CreateWindow(config)
 										if el.open then
 											renderElementList(el.elements, indent + 12)
 										else
-											for _, subEl in ipairs(el.elements) do
-												local subLbl = subEl.drawingObjects[1]
-												if subLbl then subLbl.Visible = false end
-												if subEl.bindLbl then subEl.bindLbl.Visible = false end
-												hideElementVisuals(subEl)
+											if not dryRun then
+												for _, subEl in ipairs(el.elements) do
+													local subLbl = subEl.drawingObjects[1]
+													if subLbl then subLbl.Visible = false end
+													if subEl.bindLbl then subEl.bindLbl.Visible = false end
+													hideElementVisuals(subEl)
+												end
 											end
 										end
 									end
@@ -977,10 +1053,21 @@ function RiseUI:CreateWindow(config)
 							renderElementList(sec.elements, 0)
 							y = y + 16
 						end
+						
+						local totalYReached = y + tab.scrollOffset
+						if totalYReached > maxCalculatedY then
+							maxCalculatedY = totalYReached
+						end
 					end
 
-					layoutColumn(tab.sections.Left, 160)
-					layoutColumn(tab.sections.Right, 360)
+					layoutColumn(tab.sections.Left, 160, true)
+					layoutColumn(tab.sections.Right, 360, true)
+
+					local maxScrollPossible = math.max(0, maxCalculatedY - (window.size.Y - 60))
+					tab.scrollOffset = math.clamp(tab.scrollOffset, 0, maxScrollPossible)
+
+					layoutColumn(tab.sections.Left, 160, false)
+					layoutColumn(tab.sections.Right, 360, false)
 				end
 			end
 
