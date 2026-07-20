@@ -5,6 +5,10 @@ local win = Lib:CreateWindow({
     size = Vector2.new(560, 400) 
 })
 
+local combatTab = win:Tab("Combat")
+local combatSec = combatTab:Section("Main", "Left")
+local reachCategory = combatSec:Category("Reach")
+
 local blatantTab = win:Tab("Blatant")
 local blatantSec = blatantTab:Section("Combat", "Left")
 local killAuraCategory = _G.hybrid and blatantSec:Category("Kill Aura") or nil
@@ -53,10 +57,20 @@ local settings = {
     KillauraRange = 18,
     HitSpeed = 0.1,
     AutoKit = false,
-    AutoKitRange = 18
+    AutoKitRange = 18,
+    Reach = false,
+    ReachRange = 18
 }
 
 local trackedObjects = {}
+
+local swordRangeCache = getgc({
+    "RAYCAST_SWORD_CHARACTER_DISTANCE"
+})
+
+local function applyReach(value)
+    applygc(swordRangeCache, "RAYCAST_SWORD_CHARACTER_DISTANCE", value)
+end
 
 local function getPlayerKit(char)
     local plr = Players:FindFirstChild(char.Name)
@@ -530,6 +544,22 @@ if _G.hybrid then
         end
     end)
 end
+
+reachCategory:Toggle("Enabled", false, function(state)
+    settings.Reach = state
+    if state then
+        applyReach(settings.ReachRange)
+    else
+        applyReach(14.4)
+    end
+end)
+
+reachCategory:Slider("Range", 18, 5, 1, 18, function(value)
+    settings.ReachRange = value
+    if settings.Reach then
+        applyReach(value)
+    end
+end)
 
 if killAuraCategory then
     killAuraCategory:Toggle("Enabled", false, function(state)
