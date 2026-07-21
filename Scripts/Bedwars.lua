@@ -370,11 +370,6 @@ task.spawn(function()
     end
 end)
 
-local function WorldToScreen(position)
-    local screenPos, onScreen = Camera:WorldToViewportPoint(position)
-    return Vector2.new(screenPos.X, screenPos.Y), onScreen
-end
-
 RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -666,9 +661,7 @@ task.spawn(function()
                     local hasOwlLift = root:FindFirstChild("OwlLiftForce")
                     
                     if balloonCount > 0 or hasBalloonInInventory then
-                        
                     elseif settings.OwlCheck and hasOwlLift then
-                        
                     else
                         local itemsToDrop = {"iron", "diamond", "emerald", "gold"}
                         
