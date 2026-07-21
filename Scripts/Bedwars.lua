@@ -1,38 +1,5 @@
 local Lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/rconsoIe2/MatchaLuauVM/refs/heads/main/Libraries/RiseUI.lua"))() or RiseUI
-
-local win = Lib:CreateWindow({ 
-    title = "Rise", 
-    size = Vector2.new(560, 400) 
-})
-
-local combatTab = win:Tab("Combat")
-local combatSec = combatTab:Section("Main", "Left")
-local reachCategory = combatSec:Category("Reach")
-
-local blatantTab = win:Tab("Blatant")
-local blatantSec = blatantTab:Section("Combat", "Left")
-local killAuraCategory = _G.hybrid and blatantSec:Category("Kill Aura") or nil
-
-local tab = win:Tab("Utility")
-local sec = tab:Section("ESP", "Left")
-local gameEsp = sec:Category("Game ESP")
-local kitEsp = sec:Category("Kit ESP")
-local itemEsp = sec:Category("Items ESP")
-local espOptions = sec:Category("Options")
-
-local autoKitSec = tab:Section("Automation", "Right")
-local autoKitCategory = _G.hybrid and autoKitSec:Category("Auto Kit") or nil
-
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LocalPlayer = Players.LocalPlayer
-
-local SwordHitEvent = _G.hybrid and ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("SwordHit") or nil
-local CollectEvent = _G.hybrid and ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("CollectCollectableEntity") or nil
-local PickUpBeeEvent = _G.hybrid and ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged"):WaitForChild("PickUpBee") or nil
-local Inventories = ReplicatedStorage:WaitForChild("Inventories")
+local HttpService = game:GetService("HttpService")
 
 local settings = {
     Player = false,
@@ -51,25 +18,112 @@ local settings = {
     Amount = false,
     Distance = 500,
     Killaura = false,
-    HoldClick = false,
     TargetEntities = true,
     TeamCheck = true,
-    KillauraRange = 18,
-    HitSpeed = 0.1,
+    SwingRange = 28,
+    AngleValue = 360,
+    RequireMouseDown = false,
+    NoSwing = false,
+    FaceTarget = false,
+    LimitToItems = false,
+    SwingOnly = false,
     AutoKit = false,
     AutoKitRange = 18,
-    Reach = false,
-    ReachRange = 18
+    AutoVoidDrop = false,
+    OwlCheck = true
 }
 
-local trackedObjects = {}
+local configFileName = "rise.json"
 
-local swordRangeCache = getgc({
-    "RAYCAST_SWORD_CHARACTER_DISTANCE"
+local function saveConfig()
+    pcall(function()
+        writefile(configFileName, HttpService:JSONEncode(settings))
+    end)
+end
+
+local success, fileExists = pcall(function() return isfile(configFileName) end)
+if success and fileExists then
+    local readSuccess, content = pcall(function() return readfile(configFileName) end)
+    if readSuccess and content then
+        local decodeSuccess, parsedConfig = pcall(function() return HttpService:JSONDecode(content) end)
+        if decodeSuccess and type(parsedConfig) == "table" then
+            for key, val in pairs(parsedConfig) do
+                if settings[key] ~= nil then
+                    settings[key] = val
+                end
+            end
+        end
+    end
+else
+    saveConfig()
+end
+
+local win = Lib:CreateWindow({ 
+    title = "Rise", 
+    size = Vector2.new(560, 400) 
 })
 
-local function applyReach(value)
-    applygc(swordRangeCache, "RAYCAST_SWORD_CHARACTER_DISTANCE", value)
+local blatantTab = win:Tab("Blatant")
+local blatantSec = blatantTab:Section("Combat", "Left")
+local killAuraCategory = blatantSec:Category("Kill Aura")
+
+local tab = win:Tab("Utility")
+local sec = tab:Section("ESP", "Left")
+local gameEsp = sec:Category("Game ESP")
+local kitEsp = sec:Category("Kit ESP")
+local itemEsp = sec:Category("Items ESP")
+local espOptions = sec:Category("Options")
+
+local autoKitSec = tab:Section("Automation", "Right")
+local autoKitCategory = autoKitSec:Category("Auto Kit")
+local autoVoidDropCategory = autoKitSec:Category("Auto Void Drop")
+
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+local NetManaged = ReplicatedStorage:WaitForChild("rbxts_include"):WaitForChild("node_modules"):WaitForChild("@rbxts"):WaitForChild("net"):WaitForChild("out"):WaitForChild("_NetManaged")
+local SwordHitEvent = NetManaged:WaitForChild("SwordHit")
+local CollectEvent = NetManaged:WaitForChild("CollectCollectableEntity")
+local PickUpBeeEvent = NetManaged:WaitForChild("PickUpBee")
+local DropItemRemote = NetManaged:WaitForChild("DropItem")
+local Inventories = ReplicatedStorage:WaitForChild("Inventories")
+
+local trackedObjects = {}
+local Attacking = false
+local armC0 = nil
+local AnimTween = nil
+local AnimDelay = tick()
+
+local swordList = {
+    "wood_sword", "stone_sword", "iron_sword", "diamond_sword", "og_diamond_sword", "ice_sword", "emerald_sword", "og_emerald_sword", "void_sword", "glitch_wood_sword", "glitch_void_sword", 
+    "wood_dao", "stone_dao", "iron_dao", "diamond_dao", "emerald_dao", 
+    "wood_dagger", "stone_dagger", "iron_dagger", "diamond_dagger", "mythic_dagger", 
+    "wood_scythe", "stone_scythe", "iron_scythe", "diamond_scythe", "mythic_scythe", "scythe", "reaper_scythe", "sky_scythe", 
+    "wood_gauntlets", "stone_gauntlets", "iron_gauntlets", "diamond_gauntlets", "mythic_gauntlets_plain", "mythic_gauntlets", 
+    "rageblade", "double_edge_sword", "spirit_dagger", "spirit_dagger_left", "pirate_sword_fp", "cutlass_ghost", "big_wood_sword", "heavenly_sword", "infernal_saber", "bear_claws", "baguette", "knockback_fish", 
+    "taser", "glitch_taser", "hot_potato", "frying_pan", "juggernaut_rage_blade", "battle_axe", "mass_hammer", "twirlblade", "noctium_blade", "noctium_blade_2", "noctium_blade_3", "noctium_blade_4", 
+    "laser_sword", "frosty_hammer", "sparkler", "toy_hammer", "rainbow_axe", "wizard_stick", "hero_magical_girl_rapier", "villain_magical_girl_rapier", "hero_scissor_sword", "villain_scissor_sword", 
+    "wood_gun_blade", "stone_gun_blade", "iron_gun_blade", "diamond_gun_blade", "emerald_gun_blade", "pillow", "iron_pickaxe_sword", "diamond_pickaxe_sword", "knight_shield", "tinkers_wrench", "whisper_feather", 
+    "super_guitar", "guards_spear"
+}
+
+local function getEquippedWeaponDirect()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    
+    for _, swordName in ipairs(swordList) do
+        local found = char:FindFirstChild(swordName)
+        if found and found:IsA("Tool") then
+            return found
+        end
+    end
+    return nil
 end
 
 local function getPlayerKit(char)
@@ -90,27 +144,16 @@ local function getEquippedItem(char)
     return "None"
 end
 
-local function getEquippedWeapon()
-    local char = LocalPlayer.Character
-    if char then
-        for _, child in ipairs(char:GetChildren()) do
-            if child:IsA("Tool") and string.find(string.lower(child.Name), "sword") then
-                local inventoryFolder = Inventories:FindFirstChild(LocalPlayer.Name)
-                if inventoryFolder then
-                    local weaponObj = inventoryFolder:FindFirstChild(child.Name)
-                    if weaponObj then
-                        return weaponObj
-                    end
-                end
-            end
-        end
-    end
-    
+local function getInventoryItem(itemName)
     local inventoryFolder = Inventories:FindFirstChild(LocalPlayer.Name)
     if inventoryFolder then
-        for _, obj in ipairs(inventoryFolder:GetChildren()) do
-            if string.find(string.lower(obj.Name), "sword") then
-                return obj
+        for _, tool in ipairs(inventoryFolder:GetChildren()) do
+            if tool and tool:IsA("Tool") then
+                local toolName = string.lower(tool.Name)
+                if toolName == string.lower(itemName) or toolName:find(string.lower(itemName)) then
+                    local amount = tool:GetAttribute("Amount") or 1
+                    return {tool = tool, amount = amount}
+                end
             end
         end
     end
@@ -210,16 +253,12 @@ local function getUniqueIdentifier(model)
     return model.Address or tostring(model)
 end
 
-local function isVisible(targetPart, origin)
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
-    raycastParams.IgnoreWater = true
+local function isVisibleWithCamera(targetPart)
+    local camCFrame = Camera.CFrame
+    local toTarget = (targetPart.Position - camCFrame.Position).Unit
+    local dotProduct = camCFrame.LookVector:Dot(toTarget)
     
-    local direction = (targetPart.Position - origin).Unit * (targetPart.Position - origin).Magnitude
-    local result = Workspace:Raycast(origin, direction, raycastParams)
-    
-    return result == nil
+    return dotProduct > 0
 end
 
 local function createESP(obj, espType, config)
@@ -331,6 +370,11 @@ task.spawn(function()
     end
 end)
 
+local function WorldToScreen(position)
+    local screenPos, onScreen = Camera:WorldToViewportPoint(position)
+    return Vector2.new(screenPos.X, screenPos.Y), onScreen
+end
+
 RunService.Heartbeat:Connect(function()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -351,7 +395,7 @@ RunService.Heartbeat:Connect(function()
             if distance <= settings.Distance then
                 local passVisibility = true
                 if settings.Visible then
-                    passVisibility = isVisible(data.part, root.Position)
+                    passVisibility = isVisibleWithCamera(data.part)
                 end
 
                 if passVisibility then
@@ -379,8 +423,6 @@ RunService.Heartbeat:Connect(function()
                             data.amountText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
                             data.amountText.Visible = true
                             currentBottomOffset = currentBottomOffset + 14
-                        else
-                            data.amountText.Visible = false
                         end
 
                         if settings.ShowKit and data.espType == "Player" then
@@ -389,8 +431,6 @@ RunService.Heartbeat:Connect(function()
                             data.kitText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
                             data.kitText.Visible = true
                             currentBottomOffset = currentBottomOffset + 14
-                        else
-                            data.kitText.Visible = false
                         end
 
                         if settings.ShowEquipped and data.espType == "Player" then
@@ -398,8 +438,6 @@ RunService.Heartbeat:Connect(function()
                             data.equippedText.Text = "Holding: " .. itemName
                             data.equippedText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
                             data.equippedText.Visible = true
-                        else
-                            data.equippedText.Visible = false
                         end
                     else
                         data.box.Visible = false
@@ -432,23 +470,37 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-if _G.hybrid then
-    task.spawn(function()
-        while true do
-            if settings.Killaura then
-                local allowedToHit = true
-                if settings.HoldClick and not ismouse1pressed() then
-                    allowedToHit = false
-                end
+local function getAttackData()
+    local weapon = getEquippedWeaponDirect()
+    
+    if settings.LimitToItems and not weapon then
+        return false
+    end
+    
+    if not weapon then
+        local char = LocalPlayer.Character
+        weapon = char and char:FindFirstChildWhichIsA("Tool")
+    end
 
-                if allowedToHit then
+    return weapon
+end
+
+task.spawn(function()
+    while true do
+        if settings.Killaura then
+            if settings.RequireMouseDown and not ismouse1pressed() then 
+                Attacking = false
+            else
+                local weapon = getAttackData()
+                Attacking = false
+                
+                if weapon then
                     local char = LocalPlayer.Character
                     local root = char and char:FindFirstChild("HumanoidRootPart")
                     
                     if root then
-                        local closestTarget = nil
-                        local targetPart = nil
-                        local shortestDistance = settings.KillauraRange
+                        local localfacing = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+                        local targetsList = {}
 
                         for _, data in pairs(trackedObjects) do
                             if data.part and data.part.Parent then
@@ -469,26 +521,45 @@ if _G.hybrid then
                                             end
                                         end
 
-                                        local dist = (data.part.Position - root.Position).Magnitude
-                                        if dist <= shortestDistance then
-                                            shortestDistance = dist
-                                            closestTarget = data.part.Parent
-                                            targetPart = data.part
+                                        local delta = (data.part.Position - root.Position)
+                                        local dist = delta.Magnitude
+
+                                        if dist <= settings.SwingRange then
+                                            local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+                                            if angle <= (math.rad(settings.AngleValue) / 2) then
+                                                table.insert(targetsList, {
+                                                    instance = data.part.Parent,
+                                                    part = data.part,
+                                                    distance = dist
+                                                })
+                                            end
                                         end
                                     end
                                 end
                             end
                         end
 
-                        if closestTarget and targetPart then
-                            local weapon = getEquippedWeapon()
-                            if weapon then
+                        table.sort(targetsList, function(a, b) return a.distance < b.distance end)
+
+                        for _, targetData in ipairs(targetsList) do
+                            Attacking = true
+
+                            if settings.FaceTarget then
+                                local vec = targetData.part.Position * Vector3.new(1, 0, 1)
+                                local targetCFrame = CFrame.lookAt(root.Position, Vector3.new(vec.X, root.Position.Y, vec.Z))
+                                root.CFrame = root.CFrame:Lerp(targetCFrame, 0.25)
+                            end
+
+                            if targetData.distance <= settings.SwingRange then
+                                local dir = CFrame.lookAt(root.Position, targetData.part.Position).LookVector
+                                local pos = root.Position + dir * math.max(targetData.distance - 14.399, 0)
+
                                 SwordHitEvent:FireServer({
                                     chargedAttack = { chargeRatio = 0 },
-                                    entityInstance = closestTarget,
+                                    entityInstance = targetData.instance,
                                     validate = {
-                                        selfPosition = { value = root.Position },
-                                        targetPosition = { value = targetPart.Position }
+                                        selfPosition = { value = pos },
+                                        targetPosition = { value = targetData.part.Position }
                                     },
                                     weapon = weapon
                                 })
@@ -497,121 +568,163 @@ if _G.hybrid then
                     end
                 end
             end
-            task.wait(settings.HitSpeed)
         end
-    end)
+        task.wait(1 / 60)
+    end
+end)
 
-    task.spawn(function()
-        while true do
-            if settings.AutoKit then
-                local char = LocalPlayer.Character
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                
-                if root then
-                    for _, data in pairs(trackedObjects) do
-                        if data.part and data.part.Parent then
-                            local dist = (data.part.Position - root.Position).Magnitude
-                            if dist <= settings.AutoKitRange then
-                                if data.espType == "Metal" then
-                                    local metalId = data.obj:GetAttribute("Id")
-                                    if metalId then
-                                        CollectEvent:FireServer({
-                                            id = metalId
-                                        })
-                                    end
-                                elseif data.espType == "Bee" then
-                                    local beeId = data.obj:GetAttribute("BeeId")
-                                    if beeId then
-                                        PickUpBeeEvent:FireServer({
-                                            beeId = beeId
-                                        })
-                                    end
-                                elseif data.espType == "Star" then
-                                    local starId = data.obj:GetAttribute("Id")
-                                    if starId then
-                                        CollectEvent:FireServer({
-                                            id = starId,
-                                            collectableName = data.obj.Name
-                                        })
-                                    end
+task.spawn(function()
+    while true do
+        if settings.AutoKit then
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            
+            if root then
+                for _, data in pairs(trackedObjects) do
+                    if data.part and data.part.Parent then
+                        local dist = (data.part.Position - root.Position).Magnitude
+                        if dist <= settings.AutoKitRange then
+                            if data.espType == "Metal" then
+                                local metalId = data.obj:GetAttribute("Id")
+                                if metalId then
+                                    CollectEvent:FireServer({
+                                        id = metalId
+                                    })
+                                end
+                            elseif data.espType == "Bee" then
+                                local beeId = data.obj:GetAttribute("BeeId")
+                                if beeId then
+                                    PickUpBeeEvent:FireServer({
+                                        beeId = beeId
+                                    })
+                                end
+                            elseif data.espType == "Star" then
+                                local starId = data.obj:GetAttribute("Id")
+                                if starId then
+                                    CollectEvent:FireServer({
+                                        id = starId,
+                                        collectableName = data.obj.Name
+                                    })
                                 end
                             end
                         end
                     end
                 end
             end
-            task.wait(0.1)
         end
-    end)
-end
-
-reachCategory:Toggle("Enabled", false, function(state)
-    settings.Reach = state
-    if state then
-        applyReach(settings.ReachRange)
-    else
-        applyReach(14.4)
+        task.wait(0.1)
     end
 end)
 
-reachCategory:Slider("Range", 18, 5, 1, 18, function(value)
-    settings.ReachRange = value
-    if settings.Reach then
-        applyReach(value)
+local cachedLowestPoint = -30 
+task.spawn(function()
+    while true do
+        local collections = {Workspace:FindFirstChild("Map"), Workspace:FindFirstChild("MapSpawns")}
+        local foundLowest = math.huge
+        
+        for _, folder in ipairs(collections) do
+            if folder then
+                local descendants = folder:GetDescendants()
+                for i = 1, #descendants do
+                    local v = descendants[i]
+                    if v and v:IsA("BasePart") then
+                        local success, size = pcall(function() return v.Size end)
+                        local successPos, pos = pcall(function() return v.Position end)
+                        if success and successPos and size and pos then
+                            local point = (pos.Y - (size.Y / 2)) - 15 
+                            if point < foundLowest then
+                                foundLowest = point
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if foundLowest ~= math.huge and foundLowest < 100 then
+            cachedLowestPoint = foundLowest
+        else
+            cachedLowestPoint = -30 
+        end
+        task.wait(10) 
     end
 end)
 
-if killAuraCategory then
-    killAuraCategory:Toggle("Enabled", false, function(state)
-        settings.Killaura = state
-    end)
+task.spawn(function()
+    while true do
+        if settings.AutoVoidDrop then
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            
+            if root then
+                local currentY = root.Position.Y
+                local threshold = cachedLowestPoint or -30
 
-    killAuraCategory:Toggle("Hold Click", false, function(state)
-        settings.HoldClick = state
-    end)
+                if currentY < threshold then
+                    local balloonCount = LocalPlayer:GetAttribute("InflatedBalloons") or 0
+                    local hasBalloonInInventory = getInventoryItem("balloon")
+                    local hasOwlLift = root:FindFirstChild("OwlLiftForce")
+                    
+                    if balloonCount > 0 or hasBalloonInInventory then
+                        
+                    elseif settings.OwlCheck and hasOwlLift then
+                        
+                    else
+                        local itemsToDrop = {"iron", "diamond", "emerald", "gold"}
+                        
+                        for _, itemName in ipairs(itemsToDrop) do
+                            local itemData = getInventoryItem(itemName)
+                            if itemData then
+                                DropItemRemote:FireServer({
+                                    item = itemData.tool,
+                                    amount = itemData.amount
+                                })
+                            end
+                        end
+                        
+                        task.wait(2) 
+                    end
+                end
+            end
+        end
+        task.wait(0.2)
+    end
+end)
 
-    killAuraCategory:Toggle("Team Check", true, function(state)
-        settings.TeamCheck = state
-    end)
-
-    killAuraCategory:Toggle("Target Entities", true, function(state)
-        settings.TargetEntities = state
-    end)
-
-    killAuraCategory:Slider("Range", 18, 5, 1, 22, function(value)
-        settings.KillauraRange = value
-    end)
-
-    killAuraCategory:Slider("Hit Speed", 0.1, 0.01, 0.01, 1.0, function(value)
-        settings.HitSpeed = value
-    end)
-end
+killAuraCategory:Toggle("Enabled", settings.Killaura, function(state) settings.Killaura = state saveConfig() end)
+killAuraCategory:Toggle("Target Entities", settings.TargetEntities, function(state) settings.TargetEntities = state saveConfig() end)
+killAuraCategory:Toggle("Team Check", settings.TeamCheck, function(state) settings.TeamCheck = state saveConfig() end)
+killAuraCategory:Slider("Swing Range", settings.SwingRange, 1, 1, 28, function(value) settings.SwingRange = value saveConfig() end)
+killAuraCategory:Slider("Max Angle", settings.AngleValue, 1, 1, 360, function(value) settings.AngleValue = value saveConfig() end)
+killAuraCategory:Toggle("Require Mouse Down", settings.RequireMouseDown, function(state) settings.RequireMouseDown = state saveConfig() end)
+killAuraCategory:Toggle("No Swing", settings.NoSwing, function(state) settings.NoSwing = state saveConfig() end)
+killAuraCategory:Toggle("Face Target", settings.FaceTarget, function(state) settings.FaceTarget = state saveConfig() end)
+killAuraCategory:Toggle("Limit to Items", settings.LimitToItems, function(state) settings.LimitToItems = state saveConfig() end)
+killAuraCategory:Toggle("SwingOnly", settings.SwingOnly, function(state) settings.SwingOnly = state saveConfig() end)
 
 if autoKitCategory then
-    autoKitCategory:Toggle("Enabled", false, function(state)
-        settings.AutoKit = state
-    end)
-
-    autoKitCategory:Slider("Collection Range", 18, 5, 1, 20, function(value)
-        settings.AutoKitRange = value
-    end)
+    autoKitCategory:Toggle("Enabled", settings.AutoKit, function(state) settings.AutoKit = state saveConfig() end)
+    autoKitCategory:Slider("Collection Range", settings.AutoKitRange, 5, 1, 20, function(value) settings.AutoKitRange = value saveConfig() end)
 end
 
-gameEsp:Toggle("Player ESP", false, function(state) settings.Player = state end)
-gameEsp:Toggle("Bed ESP", false, function(state) settings.Bed = state end)
-gameEsp:Toggle("Entity ESP", false, function(state) settings.Entity = state end)
-gameEsp:Toggle("Show Kit", false, function(state) settings.ShowKit = state end)
-gameEsp:Toggle("Show Equipped", false, function(state) settings.ShowEquipped = state end)
+autoVoidDropCategory:Toggle("Enabled", settings.AutoVoidDrop, function(state) settings.AutoVoidDrop = state saveConfig() end)
+autoVoidDropCategory:Toggle("Owl Check", settings.OwlCheck, function(state) settings.OwlCheck = state saveConfig() end)
 
-kitEsp:Toggle("Metal ESP", false, function(state) settings.Metal = state end)
-kitEsp:Toggle("Bee ESP", false, function(state) settings.Bee = state end)
-kitEsp:Toggle("Eldertree ESP", false, function(state) settings.Eldertree = state end)
-kitEsp:Toggle("Star ESP", false, function(state) settings.Star = state end)
+gameEsp:Toggle("Player ESP", settings.Player, function(state) settings.Player = state saveConfig() end)
+gameEsp:Toggle("Bed ESP", settings.Bed, function(state) settings.Bed = state saveConfig() end)
+gameEsp:Toggle("Entity ESP", settings.Entity, function(state) settings.Entity = state saveConfig() end)
+gameEsp:Toggle("Show Kit", settings.ShowKit, function(state) settings.ShowKit = state saveConfig() end)
+gameEsp:Toggle("Show Equipped", settings.ShowEquipped, function(state) settings.ShowEquipped = state saveConfig() end)
 
-itemEsp:Toggle("Iron ESP", false, function(state) settings.iron = state end)
-itemEsp:Toggle("Diamond ESP", false, function(state) settings.diamond = state end)
-itemEsp:Toggle("Emerald ESP", false, function(state) settings.emerald = state end)
-itemEsp:Toggle("Show Amount", false, function(state) settings.Amount = state end)
+kitEsp:Toggle("Metal ESP", settings.Metal, function(state) settings.Metal = state saveConfig() end)
+kitEsp:Toggle("Bee ESP", settings.Bee, function(state) settings.Bee = state saveConfig() end)
+kitEsp:Toggle("Eldertree ESP", settings.Eldertree, function(state) settings.Eldertree = state saveConfig() end)
+kitEsp:Toggle("Star ESP", settings.Star, function(state) settings.Star = state saveConfig() end)
 
-espOptions:Toggle("Visible Only", false, function(state) settings.Visible = state end)
-espOptions:Slider("Distance", 500, 100, 1, 2000, function(value) settings.Distance = value end)
+itemEsp:Toggle("Iron ESP", settings.iron, function(state) settings.iron = state saveConfig() end)
+itemEsp:Toggle("Diamond ESP", settings.diamond, function(state) settings.diamond = state saveConfig() end)
+itemEsp:Toggle("Emerald ESP", settings.emerald, function(state) settings.emerald = state saveConfig() end)
+itemEsp:Toggle("Show Amount", settings.Amount, function(state) settings.Amount = state saveConfig() end)
+
+espOptions:Toggle("Visible Only", settings.Visible, function(state) settings.Visible = state saveConfig() end)
+espOptions:Slider("Distance", settings.Distance, 100, 1, 2000, function(value) settings.Distance = value saveConfig() end)
