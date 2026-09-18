@@ -36,6 +36,7 @@ local settings = {
     Bee = false,
     Eldertree = false,
     Star = false,
+    AlchemyCrystal = false,
     iron = false,
     diamond = false,
     emerald = false,
@@ -261,6 +262,14 @@ local espConfigs = {
             return obj.Name == "CritStar" and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(144, 238, 144) 
         end
     },
+    AlchemyCrystal = {
+        validator = function(obj)
+            return obj.Name == "AlchemyCrystal" and obj:FindFirstChild("2")
+        end,
+        getTarget = function(obj) return obj:FindFirstChild("2") end,
+        text = "Alchemy Crystal",
+        color = Color3.fromRGB(186, 85, 211)
+    },
     iron = {
         validator = function(obj) return obj:IsA("BasePart") and obj.Name == "iron" and obj.Parent and obj.Parent.Name == "ItemDrops" end,
         getTarget = function(obj) return obj end,
@@ -374,6 +383,8 @@ local function getImageFile(espType, obj)
         return "bee.dat"
     elseif espType == "Star" then
         return obj.Name == "CritStar" and "crit_star.dat" or "vitality_star.dat"
+    elseif espType == "AlchemyCrystal" then
+        return "alchemy_crystal.dat"
     elseif espType == "iron" then
         return "iron.dat"
     elseif espType == "diamond" then
@@ -384,7 +395,7 @@ local function getImageFile(espType, obj)
     return nil
 end
 
-for _, fileName in ipairs({"iron.dat", "bee.dat", "vitality_star.dat", "crit_star.dat", "diamond.dat", "emerald.dat"}) do
+for _, fileName in ipairs({"iron.dat", "bee.dat", "vitality_star.dat", "crit_star.dat", "diamond.dat", "emerald.dat", "alchemy_crystal.dat"}) do
     loadImage(fileName)
 end
 
@@ -836,6 +847,14 @@ local function runAutoKit()
                                     collectableName = data.obj.Name
                                 })
                             end
+                        elseif data.espType == "AlchemyCrystal" then
+                            local crystalId = data.obj:GetAttribute("Id")
+                            if crystalId then
+                                CollectEvent:FireServer({
+                                    id = crystalId,
+                                    collectableName = "AlchemyCrystal"
+                                })
+                            end
                         end
                     end
                 end
@@ -1038,6 +1057,7 @@ kitEsp:Toggle("Metal ESP", settings.Metal, function(state) settings.Metal = stat
 kitEsp:Toggle("Bee ESP", settings.Bee, function(state) settings.Bee = state saveConfig() end)
 kitEsp:Toggle("Eldertree ESP", settings.Eldertree, function(state) settings.Eldertree = state saveConfig() end)
 kitEsp:Toggle("Star ESP", settings.Star, function(state) settings.Star = state saveConfig() end)
+kitEsp:Toggle("DeathAdder ESP", settings.AlchemyCrystal, function(state) settings.AlchemyCrystal = state saveConfig() end)
 
 itemEsp:Toggle("Iron ESP", settings.iron, function(state) settings.iron = state saveConfig() end)
 itemEsp:Toggle("Diamond ESP", settings.diamond, function(state) settings.diamond = state saveConfig() end)
