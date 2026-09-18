@@ -909,8 +909,46 @@ local function runAutoVoidDrop()
     end
 end
 
-local canControlInput = (type(mouse1press) == "function" and type(mouse1release) == "function")
-local fishingInputDown = false
+-- Auto Fisher (memory position hook)
+local HttpService = game:GetService("HttpService")
+
+local OFF_POS = 0x10C
+
+local verOk, ver = pcall(getrbxversion)
+if verOk and ver and ver ~= "" then
+    local bodyOk, body = pcall(httpget, "https://offsets.imtheo.lol/" .. tostring(ver) .. "/offsetshex.json")
+    if bodyOk and body ~= "" then
+        local ok, data = pcall(function() return HttpService:JSONDecode(body) end)
+        if ok and data and data.Offsets then
+            for cat, fields in pairs(data.Offsets) do
+                for k, v in pairs(fields) do
+                    local n = tonumber(v)
+                    if n and cat .. "." .. k == "GuiBase2D.AbsolutePosition" then
+                        OFF_POS = n
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function mread(kind, addr)
+    local success, value = pcall(memory_read, kind, addr)
+    return success and value or nil
+end
+
+local function mwrite(kind, addr, value)
+    return pcall(memory_write, kind, addr, value)
+end
+
+local function findDescendant(parent, targetName)
+    for _, child in ipairs(parent:GetDescendants()) do
+        if child.Name == targetName then
+            return child
+        end
+    end
+    return nil
+end
 
 local function findMinigameApp()
     local gui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -922,48 +960,32 @@ local function findMinigameApp()
     return actionBar:FindFirstChild("FishingMinigameApp")
 end
 
-local function releaseFishingInput()
-    if fishingInputDown then
-        pcall(function() mouse1release() end)
-        fishingInputDown = false
-    end
-end
-
 local function runAutoFisher()
-    if not settings.Fishing then
-        releaseFishingInput()
-        return
-    end
+    if not settings.Fishing then return end
 
     local app = findMinigameApp()
+    if not app then return end
 
-    if not app then
-        releaseFishingInput()
-        return
+    local three = app:FindFirstChild("3")
+    local minigame = three and three:FindFirstChild("Minigame")
+    if not minigame then
+        minigame = app:FindFirstChild("Minigame")
     end
 
-    if not canControlInput then return end
+    local marker = minigame and minigame:FindFirstChild("Marker")
+    local fishZone = minigame and minigame:FindFirstChild("FishZone")
 
-    pcall(function()
-        local marker = app:FindFirstChild("Marker", true)
-        local zone = app:FindFirstChild("FishZone", true)
-        if not marker or not zone then return end
+    if not (marker and marker.Address and fishZone and fishZone.Address) then
+        marker = minigame and findDescendant(minigame, "Marker")
+        fishZone = minigame and findDescendant(minigame, "FishZone")
+    end
 
-        local mCenter = marker.AbsolutePosition.X + marker.AbsoluteSize.X * 0.5
-        local zCenter = zone.AbsolutePosition.X + zone.AbsoluteSize.X * 0.5
-
-        if mCenter < zCenter - 6 then
-            if not fishingInputDown then
-                mouse1press()
-                fishingInputDown = true
-            end
-        elseif mCenter > zCenter + 6 then
-            if fishingInputDown then
-                mouse1release()
-                fishingInputDown = false
-            end
+    if marker and marker.Address and fishZone and fishZone.Address then
+        local fishX = mread("float", fishZone.Address + OFF_POS)
+        if fishX then
+            mwrite("float", marker.Address + OFF_POS, fishX - 100)
         end
-    end)
+    end
 end
 
 killAuraCategory:Toggle("Enabled", settings.Killaura, function(state) settings.Killaura = state saveConfig() end)
