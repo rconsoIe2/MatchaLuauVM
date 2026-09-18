@@ -1,4 +1,10 @@
-local Lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/rconsoIe2/MatchaLuauVM/refs/heads/main/Libraries/RiseUI.lua"))() or RiseUI
+local LibSource
+if _G.developer then
+    LibSource = readfile("riseui.lua")
+else
+    LibSource = game:HttpGet("https://raw.githubusercontent.com/rconsoIe2/MatchaLuauVM/refs/heads/main/Libraries/RiseUI.lua")
+end
+local Lib = loadstring(LibSource)() or RiseUI
 local HttpService = game:GetService("HttpService")
 
 local settings = {
@@ -27,6 +33,7 @@ local settings = {
     FaceTarget = false,
     LimitToItems = false,
     SwingOnly = false,
+    WallCheck = false,
     AutoKit = false,
     AutoKitRange = 18,
     AutoVoidDrop = false,
@@ -253,12 +260,99 @@ local function getUniqueIdentifier(model)
     return model.Address or tostring(model)
 end
 
-local function isVisibleWithCamera(targetPart)
-    local camCFrame = Camera.CFrame
-    local toTarget = (targetPart.Position - camCFrame.Position).Unit
-    local dotProduct = camCFrame.LookVector:Dot(toTarget)
-    
-    return dotProduct > 0
+local cachedImages = {}
+local function loadImage(fileName)
+    local cached = cachedImages[fileName]
+    if cached and #cached > 0 then
+        return cached
+    end
+
+    if type(_G) == "table" then
+        local persisted = type(_G.rise_images) == "table" and _G.rise_images[fileName] or nil
+        if type(persisted) == "string" and #persisted > 0 then
+            cachedImages[fileName] = persisted
+            return persisted
+        end
+    end
+
+    local filePath = "rise/assets/" .. fileName
+    local img = ""
+    if isfile(filePath) then
+        pcall(function()
+            img = readfile(filePath)
+        end)
+    end
+
+    if type(img) == "string" and #img > 0 then
+        cachedImages[fileName] = img
+        pcall(function()
+            local images = _G.rise_images
+            if type(images) ~= "table" then images = {} end
+            images[fileName] = img
+            _G.rise_images = images
+        end)
+    end
+
+    return cachedImages[fileName]
+end
+
+local function ensureAssets()
+    pcall(function()
+        if not isfolder("rise") then makefolder("rise") end
+        if not isfolder("rise/assets") then makefolder("rise/assets") end
+
+        local ok, body = pcall(function()
+            return game:HttpGet("https://api.github.com/repos/rconsoIe2/MatchaLuauVM/contents/Assets")
+        end)
+        if not ok or type(body) ~= "string" or #body == 0 then return end
+
+        local decoded
+        local ok2 = pcall(function()
+            decoded = HttpService:JSONDecode(body)
+        end)
+        if not ok2 or type(decoded) ~= "table" then return end
+
+        for _, entry in ipairs(decoded) do
+            local name = entry and entry.name
+            if type(name) == "string" then
+                local ext = name:match("%.([%w]+)$")
+                if ext and ext:lower() == "dat" and entry.download_url then
+                    local filePath = "rise/assets/" .. name
+                    if not isfile(filePath) then
+                        local data = game:HttpGet(entry.download_url)
+                        if type(data) == "string" and #data > 0 then
+                            writefile(filePath, data)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+if not _G.developer then
+    ensureAssets()
+end
+
+local function getImageFile(espType, obj)
+    if espType == "Metal" then
+        return "iron.dat"
+    elseif espType == "Bee" then
+        return "bee.dat"
+    elseif espType == "Star" then
+        return obj.Name == "CritStar" and "crit_star.dat" or "vitality_star.dat"
+    elseif espType == "iron" then
+        return "iron.dat"
+    elseif espType == "diamond" then
+        return "diamond.dat"
+    elseif espType == "emerald" then
+        return "emerald.dat"
+    end
+    return nil
+end
+
+for _, fileName in ipairs({"iron.dat", "bee.dat", "vitality_star.dat", "crit_star.dat", "diamond.dat", "emerald.dat"}) do
+    loadImage(fileName)
 end
 
 local function createESP(obj, espType, config)
@@ -271,40 +365,82 @@ local function createESP(obj, espType, config)
     local finalColor = type(config.color) == "function" and config.color(obj) or config.color
     local finalText = type(config.text) == "function" and config.text(obj) or config.text
 
-    local box = Drawing.new("Square")
-    box.Visible = false
-    box.Color = finalColor
-    box.Thickness = 1.5
-    box.Filled = false
+    local imageFile = getImageFile(espType, obj)
+    local isImageESP = (imageFile ~= nil)
+    local isDropItem = (espType == "iron" or espType == "diamond" or espType == "emerald")
+    local box = nil
+    local text = nil
+    local amountText = nil
+    local kitText = nil
+    local equippedText = nil
+    local img = nil
+    local bg = nil
 
-    local text = Drawing.new("Text")
-    text.Visible = false
-    text.Text = finalText
-    text.Color = Color3.fromRGB(255, 255, 255)
-    text.Size = 14
-    text.Center = true
-    text.Outline = true
+    if isImageESP then
+        local pic = cachedImages[imageFile]
+        if not pic or #pic == 0 then
+            return
+        end
 
-    local amountText = Drawing.new("Text")
-    amountText.Visible = false
-    amountText.Color = Color3.fromRGB(230, 230, 230)
-    amountText.Size = 12
-    amountText.Center = true
-    amountText.Outline = true
+        img = Drawing.new("Image")
+        img.Visible = false
+        img.Data = pic
+        img.Size = Vector2.new(44, 44)
+        img.Rounding = 4
+        img.ZIndex = 5
 
-    local kitText = Drawing.new("Text")
-    kitText.Visible = false
-    kitText.Color = Color3.fromRGB(255, 215, 0)
-    kitText.Size = 12
-    kitText.Center = true
-    kitText.Outline = true
+        bg = Drawing.new("Square")
+        bg.Visible = false
+        bg.Filled = true
+        bg.Color = Color3.fromRGB(0, 0, 0)
+        bg.Transparency = 0.5
+        bg.Corner = 10
+        bg.ZIndex = 4
 
-    local equippedText = Drawing.new("Text")
-    equippedText.Visible = false
-    equippedText.Color = Color3.fromRGB(175, 238, 238)
-    equippedText.Size = 12
-    equippedText.Center = true
-    equippedText.Outline = true
+        if isDropItem then
+            amountText = Drawing.new("Text")
+            amountText.Visible = false
+            amountText.Color = Color3.fromRGB(230, 230, 230)
+            amountText.Size = 12
+            amountText.Center = true
+            amountText.Outline = true
+        end
+    else
+        box = Drawing.new("Square")
+        box.Visible = false
+        box.Color = finalColor
+        box.Thickness = 1.5
+        box.Filled = false
+
+        text = Drawing.new("Text")
+        text.Visible = false
+        text.Text = finalText
+        text.Color = Color3.fromRGB(255, 255, 255)
+        text.Size = 14
+        text.Center = true
+        text.Outline = true
+
+        amountText = Drawing.new("Text")
+        amountText.Visible = false
+        amountText.Color = Color3.fromRGB(230, 230, 230)
+        amountText.Size = 12
+        amountText.Center = true
+        amountText.Outline = true
+
+        kitText = Drawing.new("Text")
+        kitText.Visible = false
+        kitText.Color = Color3.fromRGB(255, 215, 0)
+        kitText.Size = 12
+        kitText.Center = true
+        kitText.Outline = true
+
+        equippedText = Drawing.new("Text")
+        equippedText.Visible = false
+        equippedText.Color = Color3.fromRGB(175, 238, 238)
+        equippedText.Size = 12
+        equippedText.Center = true
+        equippedText.Outline = true
+    end
 
     trackedObjects[id] = { 
         box = box, 
@@ -312,6 +448,12 @@ local function createESP(obj, espType, config)
         amountText = amountText,
         kitText = kitText,
         equippedText = equippedText,
+        img = img,
+        bg = bg,
+        isImage = isImageESP,
+        imageFile = imageFile,
+        imgSize = img and img.Size,
+        imageSet = false,
         part = part, 
         obj = obj, 
         espType = espType 
@@ -319,244 +461,346 @@ local function createESP(obj, espType, config)
 end
 
 local function removeESP(id)
-    if trackedObjects[id] then
-        trackedObjects[id].box:Remove()
-        trackedObjects[id].text:Remove()
-        trackedObjects[id].amountText:Remove()
-        trackedObjects[id].kitText:Remove()
-        trackedObjects[id].equippedText:Remove()
+    local data = trackedObjects[id]
+    if data then
+        if data.box then data.box:Remove() end
+        if data.text then data.text:Remove() end
+        if data.amountText then data.amountText:Remove() end
+        if data.kitText then data.kitText:Remove() end
+        if data.equippedText then data.equippedText:Remove() end
+        if data.img then data.img:Remove() end
+        if data.bg then data.bg:Remove() end
         trackedObjects[id] = nil
     end
 end
 
-task.spawn(function()
-    while true do
-        local currentScanIds = {}
+local function scanESP()
+    local currentScanIds = {}
 
-        local workspaceChildren = Workspace:GetChildren()
-        for i = 1, #workspaceChildren do
-            local child = workspaceChildren[i]
+    local workspaceChildren = Workspace:GetChildren()
+    for i = 1, #workspaceChildren do
+        local child = workspaceChildren[i]
+        for espType, config in pairs(espConfigs) do
+            if config.validator(child) then
+                createESP(child, espType, config)
+                currentScanIds[getUniqueIdentifier(child)] = true
+                break
+            end
+        end
+    end
+
+    local itemDropsFolder = Workspace:FindFirstChild("ItemDrops")
+    if itemDropsFolder then
+        local items = itemDropsFolder:GetChildren()
+        for i = 1, #items do
+            local item = items[i]
             for espType, config in pairs(espConfigs) do
-                if config.validator(child) then
-                    createESP(child, espType, config)
-                    currentScanIds[getUniqueIdentifier(child)] = true
+                if config.validator(item) then
+                    createESP(item, espType, config)
+                    currentScanIds[getUniqueIdentifier(item)] = true
                     break
                 end
             end
         end
-
-        local itemDropsFolder = Workspace:FindFirstChild("ItemDrops")
-        if itemDropsFolder then
-            local items = itemDropsFolder:GetChildren()
-            for i = 1, #items do
-                local item = items[i]
-                for espType, config in pairs(espConfigs) do
-                    if config.validator(item) then
-                        createESP(item, espType, config)
-                        currentScanIds[getUniqueIdentifier(item)] = true
-                        break
-                    end
-                end
-            end
-        end
-
-        for id, data in pairs(trackedObjects) do
-            if not currentScanIds[id] or not data.obj or not data.obj.Parent then
-                removeESP(id)
-            end
-        end
-
-        task.wait(1.0)
     end
-end)
 
-RunService.Heartbeat:Connect(function()
+    for id, data in pairs(trackedObjects) do
+        if not currentScanIds[id] or not data.obj or not data.obj.Parent then
+            removeESP(id)
+        end
+    end
+end
+
+local function hideESP(data)
+    if data.box then data.box.Visible = false end
+    if data.text then data.text.Visible = false end
+    if data.amountText then data.amountText.Visible = false end
+    if data.kitText then data.kitText.Visible = false end
+    if data.equippedText then data.equippedText.Visible = false end
+    if data.img then data.img.Visible = false end
+    if data.bg then data.bg.Visible = false end
+end
+
+RunService.RenderStepped:Connect(function()
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     
     for id, data in pairs(trackedObjects) do
-        if data.obj == char or data.obj.Name == LocalPlayer.Name then
-            data.box.Visible = false
-            data.text.Visible = false
-            data.amountText.Visible = false
-            data.kitText.Visible = false
-            data.equippedText.Visible = false
+        if not data.part or not data.part.Parent or not data.obj or not data.obj.Parent then
+            removeESP(id)
             continue
         end
 
-        if settings[data.espType] and data.part and data.part.Parent and root then
-            local distance = (data.part.Position - root.Position).Magnitude
-            
-            if distance <= settings.Distance then
-                local passVisibility = true
-                if settings.Visible then
-                    passVisibility = isVisibleWithCamera(data.part)
+        if data.obj == char or data.obj.Name == LocalPlayer.Name then
+            hideESP(data)
+            continue
+        end
+
+        if not settings[data.espType] then
+            hideESP(data)
+            continue
+        end
+
+        if not root then
+            hideESP(data)
+            continue
+        end
+
+        local part = data.part
+        local ok, wp, pos, onScreen, tlX, tlY, brX, brY = pcall(function()
+            local w = part.Position
+            local s = part.Size
+            local screenPos, onScr = WorldToScreen(w)
+            if data.isImage then
+                return w, screenPos, onScr, 0, 0, 0, 0
+            end
+            local tl = WorldToScreen((part.CFrame * CFrame.new(-s.X/2, s.Y/2, 0)).Position)
+            local br = WorldToScreen((part.CFrame * CFrame.new(s.X/2, -s.Y/2, 0)).Position)
+            return w, screenPos, onScr, tl.X, tl.Y, br.X, br.Y
+        end)
+
+        if not ok then
+            removeESP(id)
+            continue
+        end
+
+        if not onScreen or (wp - root.Position).Magnitude > settings.Distance then
+            hideESP(data)
+            continue
+        end
+
+        local width = math.abs(tlX - brX)
+        local height = math.abs(tlY - brY)
+
+        if data.isImage then
+            if not data.imageSet then
+                local pic = cachedImages[data.imageFile]
+                if pic and #pic > 0 then
+                    data.img.Data = pic
                 end
+                data.imageSet = true
+            end
 
-                if passVisibility then
-                    local pos, onScreen = WorldToScreen(data.part.Position)
-                    if onScreen then
-                        local size = data.part.Size
-                        local topLeft, tlOnScreen = WorldToScreen((data.part.CFrame * CFrame.new(-size.X/2, size.Y/2, 0)).Position)
-                        local bottomRight, brOnScreen = WorldToScreen((data.part.CFrame * CFrame.new(size.X/2, -size.Y/2, 0)).Position)
-                        
-                        local width = math.abs(topLeft.X - bottomRight.X)
-                        local height = math.abs(topLeft.Y - bottomRight.Y)
-                        
-                        data.box.Size = Vector2.new(width, height)
-                        data.box.Position = Vector2.new(pos.X - width/2, pos.Y - height/2)
-                        data.box.Visible = true
+            local size = data.imgSize
+            data.bg.Size = Vector2.new(size.X + 10, size.Y + 10)
+            data.bg.Position = Vector2.new(pos.X - (size.X + 10) * 0.5, pos.Y - (size.Y + 10) * 0.5)
+            data.bg.Visible = true
 
-                        data.text.Position = Vector2.new(pos.X, pos.Y - height/2 - 16)
-                        data.text.Visible = true
+            data.img.Position = Vector2.new(pos.X - size.X * 0.5, pos.Y - size.Y * 0.5)
+            data.img.Visible = true
 
-                        local currentBottomOffset = height / 2 + 4
-
-                        if settings.Amount and (data.espType == "iron" or data.espType == "diamond" or data.espType == "emerald") then
-                            local amount = data.obj:GetAttribute("Amount") or 1
-                            data.amountText.Text = "x" .. tostring(amount)
-                            data.amountText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
-                            data.amountText.Visible = true
-                            currentBottomOffset = currentBottomOffset + 14
-                        end
-
-                        if settings.ShowKit and data.espType == "Player" then
-                            local kitName = getPlayerKit(data.obj)
-                            data.kitText.Text = "Kit: " .. string.upper(string.sub(kitName, 1, 1)) .. string.sub(kitName, 2)
-                            data.kitText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
-                            data.kitText.Visible = true
-                            currentBottomOffset = currentBottomOffset + 14
-                        end
-
-                        if settings.ShowEquipped and data.espType == "Player" then
-                            local itemName = getEquippedItem(data.obj)
-                            data.equippedText.Text = "Holding: " .. itemName
-                            data.equippedText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
-                            data.equippedText.Visible = true
-                        end
-                    else
-                        data.box.Visible = false
-                        data.text.Visible = false
-                        data.amountText.Visible = false
-                        data.kitText.Visible = false
-                        data.equippedText.Visible = false
-                    end
-                else
-                    data.box.Visible = false
-                    data.text.Visible = false
-                    data.amountText.Visible = false
-                    data.kitText.Visible = false
-                    data.equippedText.Visible = false
-                end
-            else
-                data.box.Visible = false
-                data.text.Visible = false
-                data.amountText.Visible = false
-                data.kitText.Visible = false
-                data.equippedText.Visible = false
+            if settings.Amount and (data.espType == "iron" or data.espType == "diamond" or data.espType == "emerald") then
+                local amount = data.obj:GetAttribute("Amount") or 1
+                data.amountText.Text = "x" .. tostring(amount)
+                data.amountText.Position = Vector2.new(pos.X, pos.Y + size.Y * 0.5 + 12)
+                data.amountText.Visible = true
             end
         else
-            data.box.Visible = false
-            data.text.Visible = false
-            data.amountText.Visible = false
-            data.kitText.Visible = false
-            data.equippedText.Visible = false
+            data.box.Size = Vector2.new(width, height)
+            data.box.Position = Vector2.new(pos.X - width/2, pos.Y - height/2)
+            data.box.Visible = true
+
+            data.text.Position = Vector2.new(pos.X, pos.Y - height/2 - 16)
+            data.text.Visible = true
+
+            local currentBottomOffset = height / 2 + 4
+
+            if settings.Amount and (data.espType == "iron" or data.espType == "diamond" or data.espType == "emerald") then
+                local amount = data.obj:GetAttribute("Amount") or 1
+                data.amountText.Text = "x" .. tostring(amount)
+                data.amountText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
+                data.amountText.Visible = true
+                currentBottomOffset = currentBottomOffset + 14
+            end
+
+            if settings.ShowKit and data.espType == "Player" then
+                local kitName = getPlayerKit(data.obj)
+                data.kitText.Text = "Kit: " .. string.upper(string.sub(kitName, 1, 1)) .. string.sub(kitName, 2)
+                data.kitText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
+                data.kitText.Visible = true
+                currentBottomOffset = currentBottomOffset + 14
+            end
+
+            if settings.ShowEquipped and data.espType == "Player" then
+                local itemName = getEquippedItem(data.obj)
+                data.equippedText.Text = "Holding: " .. itemName
+                data.equippedText.Position = Vector2.new(pos.X, pos.Y + currentBottomOffset)
+                data.equippedText.Visible = true
+            end
         end
     end
 end)
 
+local canRaycast = false
+pcall(function()
+    local hit = workspace:Raycast(Vector3.new(0, 0, 0), Vector3.new(0, 1, 0))
+    canRaycast = true
+end)
+
 local function getAttackData()
-    local weapon = getEquippedWeaponDirect()
-    
+    local char = LocalPlayer.Character
+    local weapon = nil
+
+    if char then
+        local equippedName = getEquippedItem(char)
+        if equippedName and equippedName ~= "None" then
+            local invItem = getInventoryItem(equippedName)
+            if invItem and invItem.tool then
+                weapon = invItem.tool
+            end
+        end
+    end
+
+    if not weapon then
+        weapon = getEquippedWeaponDirect()
+    end
+
+    if not weapon and char then
+        weapon = char:FindFirstChildWhichIsA("Tool")
+    end
+
     if settings.LimitToItems and not weapon then
         return false
-    end
-    
-    if not weapon then
-        local char = LocalPlayer.Character
-        weapon = char and char:FindFirstChildWhichIsA("Tool")
     end
 
     return weapon
 end
 
-task.spawn(function()
-    while true do
-        if settings.Killaura then
-            if settings.RequireMouseDown and not ismouse1pressed() then 
-                Attacking = false
-            else
-                local weapon = getAttackData()
-                Attacking = false
-                
-                if weapon then
-                    local char = LocalPlayer.Character
-                    local root = char and char:FindFirstChild("HumanoidRootPart")
-                    
-                    if root then
-                        local localfacing = root.CFrame.LookVector * Vector3.new(1, 0, 1)
-                        local targetsList = {}
+local nextKillAuraTime = 0
+local function runKillAura()
+    if not settings.Killaura then return end
 
-                        for _, data in pairs(trackedObjects) do
-                            if data.part and data.part.Parent then
-                                if data.obj == char or data.obj.Name == LocalPlayer.Name then
+    local now = tick()
+    if now < nextKillAuraTime then return end
+    nextKillAuraTime = now + 0.1
+
+    if settings.RequireMouseDown and not ismouse1pressed() then 
+        Attacking = false
+        return
+    end
+
+    local weapon = getAttackData()
+    Attacking = false
+    
+    if weapon then
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if root then
+            local localfacing = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+            local targetsList = {}
+
+            for _, data in pairs(trackedObjects) do
+                if data.part and data.part.Parent then
+                    if data.obj == char or data.obj.Name == LocalPlayer.Name then
+                        continue
+                    end
+
+                    local isPlayer = (data.espType == "Player")
+                    local isEntity = (data.espType == "Entity")
+
+                    if isPlayer or (isEntity and settings.TargetEntities) then
+                        local humanoid = data.part.Parent:FindFirstChildWhichIsA("Humanoid")
+                        if humanoid and humanoid.Health > 0 then
+                            if isPlayer and settings.TeamCheck then
+                                local targetPlrInstance = Players:FindFirstChild(data.obj.Name)
+                                if targetPlrInstance and targetPlrInstance.Team == LocalPlayer.Team then
                                     continue
                                 end
+                            end
 
-                                local isPlayer = (data.espType == "Player")
-                                local isEntity = (data.espType == "Entity")
+                            local delta = (data.part.Position - root.Position)
+                            local dist = delta.Magnitude
 
-                                if isPlayer or (isEntity and settings.TargetEntities) then
-                                    local humanoid = data.part.Parent:FindFirstChildWhichIsA("Humanoid")
-                                    if humanoid and humanoid.Health > 0 then
-                                        if isPlayer and settings.TeamCheck then
-                                            local targetPlrInstance = Players:FindFirstChild(data.obj.Name)
-                                            if targetPlrInstance and targetPlrInstance.Team == LocalPlayer.Team then
-                                                continue
-                                            end
-                                        end
-
-                                        local delta = (data.part.Position - root.Position)
-                                        local dist = delta.Magnitude
-
-                                        if dist <= settings.SwingRange then
-                                            local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-                                            if angle <= (math.rad(settings.AngleValue) / 2) then
-                                                table.insert(targetsList, {
-                                                    instance = data.part.Parent,
-                                                    part = data.part,
-                                                    distance = dist
-                                                })
-                                            end
-                                        end
-                                    end
+                            if dist <= settings.SwingRange then
+                                local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+                                if angle <= (math.rad(settings.AngleValue) / 2) then
+                                    table.insert(targetsList, {
+                                        instance = data.part.Parent,
+                                        part = data.part,
+                                        distance = dist
+                                    })
                                 end
                             end
                         end
+                    end
+                end
+            end
 
-                        table.sort(targetsList, function(a, b) return a.distance < b.distance end)
+            table.sort(targetsList, function(a, b) return a.distance < b.distance end)
 
-                        for _, targetData in ipairs(targetsList) do
-                            Attacking = true
+            for _, targetData in ipairs(targetsList) do
+                Attacking = true
 
-                            if settings.FaceTarget then
-                                local vec = targetData.part.Position * Vector3.new(1, 0, 1)
-                                local targetCFrame = CFrame.lookAt(root.Position, Vector3.new(vec.X, root.Position.Y, vec.Z))
-                                root.CFrame = root.CFrame:Lerp(targetCFrame, 0.25)
+                if settings.FaceTarget then
+                    local vec = targetData.part.Position * Vector3.new(1, 0, 1)
+                    local targetCFrame = CFrame.lookAt(root.Position, Vector3.new(vec.X, root.Position.Y, vec.Z))
+                    root.CFrame = root.CFrame:Lerp(targetCFrame, 0.25)
+                end
+
+                local wallBlocked = false
+                if settings.WallCheck and canRaycast then
+                    local rayDir = (targetData.part.Position - root.Position)
+                    local ok, hit = pcall(function()
+                        return workspace:Raycast(root.Position + rayDir.Unit * 1.5, rayDir)
+                    end)
+                    if ok and hit and hit.Instance then
+                        local inst = hit.Instance
+                        if inst and not inst:IsDescendantOf(targetData.instance) and not inst:IsDescendantOf(char) then
+                            wallBlocked = true
+                        end
+                    end
+                end
+
+                if not wallBlocked and targetData.distance <= settings.SwingRange then
+                    local dir = CFrame.lookAt(root.Position, targetData.part.Position).LookVector
+                    local pos = root.Position + dir * math.max(targetData.distance - 14.399, 0)
+
+                    SwordHitEvent:FireServer({
+                        chargedAttack = { chargeRatio = 0 },
+                        entityInstance = targetData.instance,
+                        validate = {
+                            selfPosition = { value = pos },
+                            targetPosition = { value = targetData.part.Position }
+                        },
+                        weapon = weapon
+                    })
+                end
+            end
+        end
+    end
+end
+
+local function runAutoKit()
+    if settings.AutoKit then
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if root then
+            for _, data in pairs(trackedObjects) do
+                if data.part and data.part.Parent then
+                    local dist = (data.part.Position - root.Position).Magnitude
+                    if dist <= settings.AutoKitRange then
+                        if data.espType == "Metal" then
+                            local metalId = data.obj:GetAttribute("Id")
+                            if metalId then
+                                CollectEvent:FireServer({
+                                    id = metalId
+                                })
                             end
-
-                            if targetData.distance <= settings.SwingRange then
-                                local dir = CFrame.lookAt(root.Position, targetData.part.Position).LookVector
-                                local pos = root.Position + dir * math.max(targetData.distance - 14.399, 0)
-
-                                SwordHitEvent:FireServer({
-                                    chargedAttack = { chargeRatio = 0 },
-                                    entityInstance = targetData.instance,
-                                    validate = {
-                                        selfPosition = { value = pos },
-                                        targetPosition = { value = targetData.part.Position }
-                                    },
-                                    weapon = weapon
+                        elseif data.espType == "Bee" then
+                            local beeId = data.obj:GetAttribute("BeeId")
+                            if beeId then
+                                PickUpBeeEvent:FireServer({
+                                    beeId = beeId
+                                })
+                            end
+                        elseif data.espType == "Star" then
+                            local starId = data.obj:GetAttribute("Id")
+                            if starId then
+                                CollectEvent:FireServer({
+                                    id = starId,
+                                    collectableName = data.obj.Name
                                 })
                             end
                         end
@@ -564,125 +808,74 @@ task.spawn(function()
                 end
             end
         end
-        task.wait(1 / 60)
     end
-end)
+end
 
-task.spawn(function()
-    while true do
-        if settings.AutoKit then
-            local char = LocalPlayer.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            
-            if root then
-                for _, data in pairs(trackedObjects) do
-                    if data.part and data.part.Parent then
-                        local dist = (data.part.Position - root.Position).Magnitude
-                        if dist <= settings.AutoKitRange then
-                            if data.espType == "Metal" then
-                                local metalId = data.obj:GetAttribute("Id")
-                                if metalId then
-                                    CollectEvent:FireServer({
-                                        id = metalId
-                                    })
-                                end
-                            elseif data.espType == "Bee" then
-                                local beeId = data.obj:GetAttribute("BeeId")
-                                if beeId then
-                                    PickUpBeeEvent:FireServer({
-                                        beeId = beeId
-                                    })
-                                end
-                            elseif data.espType == "Star" then
-                                local starId = data.obj:GetAttribute("Id")
-                                if starId then
-                                    CollectEvent:FireServer({
-                                        id = starId,
-                                        collectableName = data.obj.Name
-                                    })
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        task.wait(0.1)
-    end
-end)
-
-local cachedLowestPoint = -30 
-task.spawn(function()
-    while true do
-        local collections = {Workspace:FindFirstChild("Map"), Workspace:FindFirstChild("MapSpawns")}
-        local foundLowest = math.huge
-        
+local cachedLowestPoint = -30
+local function updateLowestPoint()
+    local collections = {Workspace:FindFirstChild("Map"), Workspace:FindFirstChild("MapSpawns")}
+    local foundLowest = math.huge
+    
+    local ok = pcall(function()
         for _, folder in ipairs(collections) do
             if folder then
                 local descendants = folder:GetDescendants()
                 for i = 1, #descendants do
                     local v = descendants[i]
-                    if v and v:IsA("BasePart") then
-                        local success, size = pcall(function() return v.Size end)
-                        local successPos, pos = pcall(function() return v.Position end)
-                        if success and successPos and size and pos then
-                            local point = (pos.Y - (size.Y / 2)) - 15 
-                            if point < foundLowest then
-                                foundLowest = point
-                            end
+                    if v:IsA("BasePart") then
+                        local size = v.Size
+                        local pos = v.Position
+                        local point = (pos.Y - (size.Y / 2)) - 15 
+                        if point < foundLowest then
+                            foundLowest = point
                         end
                     end
                 end
             end
         end
+    end)
+
+    if ok and foundLowest ~= math.huge and foundLowest < 100 then
+        cachedLowestPoint = foundLowest
+    else
+        cachedLowestPoint = -30 
+    end
+end
+
+local dropCooldownUntil = 0
+local function runAutoVoidDrop()
+    if settings.AutoVoidDrop and tick() >= dropCooldownUntil then
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
         
-        if foundLowest ~= math.huge and foundLowest < 100 then
-            cachedLowestPoint = foundLowest
-        else
-            cachedLowestPoint = -30 
-        end
-        task.wait(10) 
-    end
-end)
+        if root then
+            local currentY = root.Position.Y
+            local threshold = cachedLowestPoint or -30
 
-task.spawn(function()
-    while true do
-        if settings.AutoVoidDrop then
-            local char = LocalPlayer.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            
-            if root then
-                local currentY = root.Position.Y
-                local threshold = cachedLowestPoint or -30
+            if currentY < threshold then
+                local balloonCount = LocalPlayer:GetAttribute("InflatedBalloons") or 0
+                local hasBalloonInInventory = getInventoryItem("balloon")
+                local hasOwlLift = root:FindFirstChild("OwlLiftForce")
 
-                if currentY < threshold then
-                    local balloonCount = LocalPlayer:GetAttribute("InflatedBalloons") or 0
-                    local hasBalloonInInventory = getInventoryItem("balloon")
-                    local hasOwlLift = root:FindFirstChild("OwlLiftForce")
+                if not (balloonCount > 0 or hasBalloonInInventory) and not (settings.OwlCheck and hasOwlLift) then
+                    local itemsToDrop = {"iron", "diamond", "emerald", "gold"}
                     
-                    if balloonCount > 0 or hasBalloonInInventory then
-                    elseif settings.OwlCheck and hasOwlLift then
-                    else
-                        local itemsToDrop = {"iron", "diamond", "emerald", "gold"}
-                        
-                        for _, itemName in ipairs(itemsToDrop) do
-                            local itemData = getInventoryItem(itemName)
-                            if itemData then
-                                DropItemRemote:FireServer({
-                                    item = itemData.tool,
-                                    amount = itemData.amount
-                                })
-                            end
+                    for _, itemName in ipairs(itemsToDrop) do
+                        local itemData = getInventoryItem(itemName)
+                        if itemData then
+                            DropItemRemote:FireServer({
+                                item = itemData.tool,
+                                amount = itemData.amount
+                            })
                         end
-                        
-                        task.wait(2) 
                     end
+
+                    dropCooldownUntil = tick() + 2
                 end
             end
         end
-        task.wait(0.2)
     end
-end)
+end
 
 killAuraCategory:Toggle("Enabled", settings.Killaura, function(state) settings.Killaura = state saveConfig() end)
 killAuraCategory:Toggle("Target Entities", settings.TargetEntities, function(state) settings.TargetEntities = state saveConfig() end)
@@ -694,6 +887,7 @@ killAuraCategory:Toggle("No Swing", settings.NoSwing, function(state) settings.N
 killAuraCategory:Toggle("Face Target", settings.FaceTarget, function(state) settings.FaceTarget = state saveConfig() end)
 killAuraCategory:Toggle("Limit to Items", settings.LimitToItems, function(state) settings.LimitToItems = state saveConfig() end)
 killAuraCategory:Toggle("SwingOnly", settings.SwingOnly, function(state) settings.SwingOnly = state saveConfig() end)
+killAuraCategory:Toggle("Wall Check", settings.WallCheck, function(state) settings.WallCheck = state saveConfig() end)
 
 if autoKitCategory then
     autoKitCategory:Toggle("Enabled", settings.AutoKit, function(state) settings.AutoKit = state saveConfig() end)
@@ -721,3 +915,38 @@ itemEsp:Toggle("Show Amount", settings.Amount, function(state) settings.Amount =
 
 espOptions:Toggle("Visible Only", settings.Visible, function(state) settings.Visible = state saveConfig() end)
 espOptions:Slider("Distance", settings.Distance, 100, 1, 2000, function(value) settings.Distance = value saveConfig() end)
+
+local nextScanTime = 0
+local nextAutoKitTime = 0
+local nextVoidDropTime = 0
+local nextLowestPointTime = 0
+
+task.spawn(function()
+    while true do
+        local now = tick()
+
+        if now >= nextScanTime then
+            nextScanTime = now + 1.0
+            scanESP()
+        end
+
+        if now >= nextAutoKitTime then
+            nextAutoKitTime = now + 0.1
+            runAutoKit()
+        end
+
+        if now >= nextVoidDropTime then
+            nextVoidDropTime = now + 0.2
+            runAutoVoidDrop()
+        end
+
+        if now >= nextLowestPointTime and settings.AutoVoidDrop then
+            nextLowestPointTime = now + 10
+            updateLowestPoint()
+        end
+
+        runKillAura()
+
+        task.wait(1 / 60)
+    end
+end)
