@@ -56,7 +56,8 @@ local settings = {
     AutoKit = false,
     AutoKitRange = 18,
     AutoVoidDrop = false,
-    OwlCheck = true
+    OwlCheck = true,
+    Fishing = false
 }
 
 local configPath = "rise/configs/" .. tostring(game.PlaceId) .. ".json"
@@ -106,6 +107,7 @@ local espOptions = sec:Category("Options")
 local autoKitSec = tab:Section("Automation", "Right")
 local autoKitCategory = autoKitSec:Category("Auto Kit")
 local autoVoidDropCategory = autoKitSec:Category("Auto Void Drop")
+local autoFishingCategory = autoKitSec:Category("Auto Fisher")
 
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -907,6 +909,63 @@ local function runAutoVoidDrop()
     end
 end
 
+local canControlInput = (type(mouse1press) == "function" and type(mouse1release) == "function")
+local fishingInputDown = false
+
+local function findMinigameApp()
+    local gui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not gui then return nil end
+    local actionBarScreen = gui:FindFirstChild("ActionBarScreenGui")
+    if not actionBarScreen then return nil end
+    local actionBar = actionBarScreen:FindFirstChild("ActionBar")
+    if not actionBar then return nil end
+    return actionBar:FindFirstChild("FishingMinigameApp")
+end
+
+local function releaseFishingInput()
+    if fishingInputDown then
+        pcall(function() mouse1release() end)
+        fishingInputDown = false
+    end
+end
+
+local function runAutoFisher()
+    if not settings.Fishing then
+        releaseFishingInput()
+        return
+    end
+
+    local app = findMinigameApp()
+
+    if not app then
+        releaseFishingInput()
+        return
+    end
+
+    if not canControlInput then return end
+
+    pcall(function()
+        local marker = app:FindFirstChild("Marker", true)
+        local zone = app:FindFirstChild("FishZone", true)
+        if not marker or not zone then return end
+
+        local mCenter = marker.AbsolutePosition.X + marker.AbsoluteSize.X * 0.5
+        local zCenter = zone.AbsolutePosition.X + zone.AbsoluteSize.X * 0.5
+
+        if mCenter < zCenter - 6 then
+            if not fishingInputDown then
+                mouse1press()
+                fishingInputDown = true
+            end
+        elseif mCenter > zCenter + 6 then
+            if fishingInputDown then
+                mouse1release()
+                fishingInputDown = false
+            end
+        end
+    end)
+end
+
 killAuraCategory:Toggle("Enabled", settings.Killaura, function(state) settings.Killaura = state saveConfig() end)
 killAuraCategory:Toggle("Target Entities", settings.TargetEntities, function(state) settings.TargetEntities = state saveConfig() end)
 killAuraCategory:Toggle("Team Check", settings.TeamCheck, function(state) settings.TeamCheck = state saveConfig() end)
@@ -926,6 +985,7 @@ end
 
 autoVoidDropCategory:Toggle("Enabled", settings.AutoVoidDrop, function(state) settings.AutoVoidDrop = state saveConfig() end)
 autoVoidDropCategory:Toggle("Owl Check", settings.OwlCheck, function(state) settings.OwlCheck = state saveConfig() end)
+autoFishingCategory:Toggle("Enabled", settings.Fishing, function(state) settings.Fishing = state saveConfig() end)
 
 gameEsp:Toggle("Player ESP", settings.Player, function(state) settings.Player = state saveConfig() end)
 gameEsp:Toggle("Bed ESP", settings.Bed, function(state) settings.Bed = state saveConfig() end)
@@ -974,6 +1034,8 @@ task.spawn(function()
             nextLowestPointTime = now + 10
             updateLowestPoint()
         end
+
+        runAutoFisher()
 
         runKillAura()
 
