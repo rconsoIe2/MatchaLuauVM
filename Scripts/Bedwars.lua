@@ -57,7 +57,8 @@ local settings = {
     AutoKitRange = 18,
     AutoVoidDrop = false,
     OwlCheck = true,
-    Fishing = false
+    Fishing = false,
+    Instant = false
 }
 
 local configPath = "rise/configs/" .. tostring(game.PlaceId) .. ".json"
@@ -960,11 +961,28 @@ local function findMinigameApp()
     return actionBar:FindFirstChild("FishingMinigameApp")
 end
 
+local lastInstantApp = nil
+
 local function runAutoFisher()
     if not settings.Fishing then return end
 
     local app = findMinigameApp()
-    if not app then return end
+
+    if not app then
+        lastInstantApp = nil
+        return
+    end
+
+    if settings.Instant then
+        if lastInstantApp ~= app then
+            lastInstantApp = app
+            local pullRemote = NetManaged:FindFirstChild("PullFishingRod")
+            if pullRemote then
+                pcall(function() pullRemote:FireServer({ success = true }) end)
+            end
+        end
+        return
+    end
 
     local three = app:FindFirstChild("3")
     local minigame = three and three:FindFirstChild("Minigame")
@@ -1008,6 +1026,7 @@ end
 autoVoidDropCategory:Toggle("Enabled", settings.AutoVoidDrop, function(state) settings.AutoVoidDrop = state saveConfig() end)
 autoVoidDropCategory:Toggle("Owl Check", settings.OwlCheck, function(state) settings.OwlCheck = state saveConfig() end)
 autoFishingCategory:Toggle("Enabled", settings.Fishing, function(state) settings.Fishing = state saveConfig() end)
+autoFishingCategory:Toggle("Instant", settings.Instant, function(state) settings.Instant = state saveConfig() end)
 
 gameEsp:Toggle("Player ESP", settings.Player, function(state) settings.Player = state saveConfig() end)
 gameEsp:Toggle("Bed ESP", settings.Bed, function(state) settings.Bed = state saveConfig() end)
@@ -1033,6 +1052,22 @@ local nextAutoKitTime = 0
 local nextVoidDropTime = 0
 local nextLowestPointTime = 0
 
+local autofisherConnected = false
+pcall(function()
+    local RunService = game:GetService("RunService")
+    RunService.RenderStepped:Connect(runAutoFisher)
+    autofisherConnected = true
+end)
+
+if not autofisherConnected then
+    task.spawn(function()
+        while true do
+            runAutoFisher()
+            task.wait()
+        end
+    end)
+end
+
 task.spawn(function()
     while true do
         local now = tick()
@@ -1056,8 +1091,6 @@ task.spawn(function()
             nextLowestPointTime = now + 10
             updateLowestPoint()
         end
-
-        runAutoFisher()
 
         runKillAura()
 
