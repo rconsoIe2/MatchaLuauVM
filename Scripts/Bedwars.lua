@@ -1,6 +1,25 @@
+if not _G.loadedFromMain then
+    local mainSource = ""
+    pcall(function()
+        if _G.developer then
+            mainSource = readfile("rise/main.lua")
+        else
+            mainSource = game:HttpGet("https://raw.githubusercontent.com/rconsoIe2/MatchaLuauVM/refs/heads/main/main.lua")
+        end
+    end)
+
+    if type(mainSource) == "string" and #mainSource > 0 then
+        _G.loadedFromMain = true
+        loadstring(mainSource)()
+    else
+        print("Bedwars.lua: main.lua not available")
+    end
+    return
+end
+
 local LibSource
 if _G.developer then
-    LibSource = readfile("riseui.lua")
+    LibSource = readfile("rise/libraries/RiseUI.lua")
 else
     LibSource = game:HttpGet("https://raw.githubusercontent.com/rconsoIe2/MatchaLuauVM/refs/heads/main/Libraries/RiseUI.lua")
 end
@@ -40,30 +59,33 @@ local settings = {
     OwlCheck = true
 }
 
-local configFileName = "rise.json"
+local configPath = "rise/configs/" .. tostring(game.PlaceId) .. ".json"
 
 local function saveConfig()
     pcall(function()
-        writefile(configFileName, HttpService:JSONEncode(settings))
+        writefile(configPath, HttpService:JSONEncode(settings))
     end)
 end
 
-local success, fileExists = pcall(function() return isfile(configFileName) end)
-if success and fileExists then
-    local readSuccess, content = pcall(function() return readfile(configFileName) end)
-    if readSuccess and content then
-        local decodeSuccess, parsedConfig = pcall(function() return HttpService:JSONDecode(content) end)
-        if decodeSuccess and type(parsedConfig) == "table" then
-            for key, val in pairs(parsedConfig) do
-                if settings[key] ~= nil then
-                    settings[key] = val
+local function loadConfig()
+    pcall(function()
+        if isfile(configPath) then
+            local content = readfile(configPath)
+            if content and #content > 0 then
+                local parsed = HttpService:JSONDecode(content)
+                if type(parsed) == "table" then
+                    for key, val in pairs(parsed) do
+                        if settings[key] ~= nil then
+                            settings[key] = val
+                        end
+                    end
                 end
             end
         end
-    end
-else
-    saveConfig()
+    end)
 end
+
+loadConfig()
 
 local win = Lib:CreateWindow({ 
     title = "Rise", 
@@ -296,42 +318,50 @@ local function loadImage(fileName)
     return cachedImages[fileName]
 end
 
-local function ensureAssets()
-    pcall(function()
-        if not isfolder("rise") then makefolder("rise") end
-        if not isfolder("rise/assets") then makefolder("rise/assets") end
+local function downloadRepoDir(repoPath, localPath, allowedExts)
+    local ok, body = pcall(function()
+        return game:HttpGet("https://api.github.com/repos/rconsoIe2/MatchaLuauVM/contents/" .. repoPath)
+    end)
+    if not ok or type(body) ~= "string" or #body == 0 then return end
 
-        local ok, body = pcall(function()
-            return game:HttpGet("https://api.github.com/repos/rconsoIe2/MatchaLuauVM/contents/Assets")
-        end)
-        if not ok or type(body) ~= "string" or #body == 0 then return end
+    local decoded
+    local ok2 = pcall(function()
+        decoded = HttpService:JSONDecode(body)
+    end)
+    if not ok2 or type(decoded) ~= "table" then return end
 
-        local decoded
-        local ok2 = pcall(function()
-            decoded = HttpService:JSONDecode(body)
-        end)
-        if not ok2 or type(decoded) ~= "table" then return end
-
-        for _, entry in ipairs(decoded) do
-            local name = entry and entry.name
-            if type(name) == "string" then
-                local ext = name:match("%.([%w]+)$")
-                if ext and ext:lower() == "dat" and entry.download_url then
-                    local filePath = "rise/assets/" .. name
-                    if not isfile(filePath) then
-                        local data = game:HttpGet(entry.download_url)
-                        if type(data) == "string" and #data > 0 then
-                            writefile(filePath, data)
-                        end
+    for _, entry in ipairs(decoded) do
+        local name = entry and entry.name
+        if type(name) == "string" and entry.download_url then
+            local ext = name:match("%.([%w]+)$")
+            if ext and allowedExts[ext:lower()] then
+                local filePath = localPath .. name
+                if not isfile(filePath) then
+                    local data = game:HttpGet(entry.download_url)
+                    if type(data) == "string" and #data > 0 then
+                        writefile(filePath, data)
                     end
                 end
             end
         end
+    end
+end
+
+local function ensureRiseFiles()
+    pcall(function()
+        if not isfolder("rise") then makefolder("rise") end
+        if not isfolder("rise/assets") then makefolder("rise/assets") end
+        if not isfolder("rise/libraries") then makefolder("rise/libraries") end
+        if not isfolder("rise/scripts") then makefolder("rise/scripts") end
+
+        downloadRepoDir("Assets", "rise/assets/", { dat = true })
+        downloadRepoDir("Libraries", "rise/libraries/", { lua = true, luau = true })
+        downloadRepoDir("Scripts", "rise/scripts/", { lua = true, luau = true })
     end)
 end
 
 if not _G.developer then
-    ensureAssets()
+    ensureRiseFiles()
 end
 
 local function getImageFile(espType, obj)
