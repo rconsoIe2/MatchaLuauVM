@@ -4,6 +4,8 @@ if type(env) ~= "table" then env = {} end
 
 local shared = type(shared) == "table" and shared or {}
 
+local RunService = game:GetService("RunService")
+
 local function safeWriteGlobal(key, value)
 	pcall(function() env[key] = value end)
 	pcall(function() getgenv()[key] = value end)
@@ -222,10 +224,9 @@ function RiseUI:Notify(title, text, duration)
 	table.insert(activeNotifications, notif)
 end
 
-task.spawn(function()
-	while true do
-		local camera = workspace.CurrentCamera
-		if camera then
+RunService.RenderStepped:Connect(function()
+	local camera = workspace.CurrentCamera
+	if camera then
 			local screenSize = camera.ViewportSize
 			local startX = screenSize.X - 270
 			local startY = screenSize.Y - 80
@@ -271,8 +272,6 @@ task.spawn(function()
 			end
 			activeNotifications = aliveNotifs
 		end
-		task.wait()
-	end
 end)
 
 local function hideElementVisuals(el)
@@ -662,13 +661,12 @@ function RiseUI:CreateWindow(config)
 		return tab
 	end
 
-	task.spawn(function()
-		local lastMouseState = false
-		local lastScrollStateUp = false
-		local lastScrollStateDown = false
+	local lastMouseState = false
+	local lastScrollStateUp = false
+	local lastScrollStateDown = false
 
-		while true do
-			local menuTogglePressed = iskeypressed(RiseUI.ToggleKey)
+	RunService.RenderStepped:Connect(function()
+		local menuTogglePressed = iskeypressed(RiseUI.ToggleKey)
 			if menuTogglePressed and not RiseUI.LastToggleState then
 				RiseUI.Visible = not RiseUI.Visible
 			end
@@ -726,12 +724,11 @@ function RiseUI:CreateWindow(config)
 								end
 							end
 							processBinds(sec.elements)
-						end
 					end
 				end
-				task.wait()
-				continue
 			end
+			return
+		end
 
 			local currentMouseState = ismouse1pressed()
 			local mouseClicked = currentMouseState and not lastMouseState
@@ -1101,9 +1098,7 @@ function RiseUI:CreateWindow(config)
 			end
 
 			lastMouseState = currentMouseState
-			task.wait()
-		end
-	end)
+		end)
 
 	return window
 end
