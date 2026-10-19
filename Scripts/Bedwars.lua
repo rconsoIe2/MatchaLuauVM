@@ -59,7 +59,8 @@ local settings = {
     AutoVoidDrop = false,
     OwlCheck = true,
     Fishing = false,
-    Instant = false
+    Instant = false,
+    FishingRemote = false
 }
 
 local configPath = "rise/configs/" .. tostring(game.PlaceId) .. ".json"
@@ -981,6 +982,22 @@ local function findMinigameApp()
 end
 
 local lastInstantApp = nil
+local fisherGcCache = nil
+
+local FISHER_GC_KEYS = { "fillAmount", "drainAmount" }
+local FISHER_GC_VALUES = {
+    fillAmount = 100,
+    drainAmount = 0
+}
+
+local function applyFisherGc()
+    if not (getgc and applygc) then return end
+    if not fisherGcCache then
+        fisherGcCache = getgc(FISHER_GC_KEYS)
+    end
+    pcall(function() applygc(fisherGcCache, FISHER_GC_VALUES) end)
+    notify("Rise", "memory autofisher done")
+end
 
 local function runAutoFisher()
     if not settings.Fishing then return end
@@ -989,10 +1006,11 @@ local function runAutoFisher()
 
     if not app then
         lastInstantApp = nil
+        fisherGcCache = nil
         return
     end
 
-    if settings.Instant then
+    if settings.FishingRemote then
         if lastInstantApp ~= app then
             lastInstantApp = app
             local pullRemote = NetManaged:FindFirstChild("PullFishingRod")
@@ -1023,6 +1041,10 @@ local function runAutoFisher()
             mwrite("float", marker.Address + OFF_POS, fishX - 100)
         end
     end
+
+    if settings.Instant then
+        applyFisherGc()
+    end
 end
 
 killAuraCategory:Toggle("Enabled", settings.Killaura, function(state) settings.Killaura = state saveConfig() end)
@@ -1045,7 +1067,8 @@ end
 autoVoidDropCategory:Toggle("Enabled", settings.AutoVoidDrop, function(state) settings.AutoVoidDrop = state saveConfig() end)
 autoVoidDropCategory:Toggle("Owl Check", settings.OwlCheck, function(state) settings.OwlCheck = state saveConfig() end)
 autoFishingCategory:Toggle("Enabled", settings.Fishing, function(state) settings.Fishing = state saveConfig() end)
-autoFishingCategory:Toggle("Instant", settings.Instant, function(state) settings.Instant = state saveConfig() end)
+autoFishingCategory:Toggle("Instant (Memory)", settings.Instant, function(state) settings.Instant = state saveConfig() notify("Rise", "memory autofisher done") end)
+autoFishingCategory:Toggle("Instant (Remote)", settings.FishingRemote, function(state) settings.FishingRemote = state saveConfig() end)
 
 gameEsp:Toggle("Player ESP", settings.Player, function(state) settings.Player = state saveConfig() end)
 gameEsp:Toggle("Bed ESP", settings.Bed, function(state) settings.Bed = state saveConfig() end)
