@@ -92,6 +92,7 @@ local function loadConfig()
 end
 
 loadConfig()
+settings.Instant = false
 
 Lib:SetTitle("Rise")
 Lib:SetSubtitle("Bedwars")
