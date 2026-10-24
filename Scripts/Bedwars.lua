@@ -45,7 +45,6 @@ local settings = {
     Visible = false,
     Amount = false,
     Distance = 500,
-    Killaura = false,
     TargetEntities = true,
     TeamCheck = true,
     SwingRange = 28,
@@ -705,111 +704,6 @@ local function getAttackData()
     end
 
     return weapon
-end
-
-local nextKillAuraTime = 0
-local function runKillAura()
-    if not settings.Killaura then return end
-
-    local now = tick()
-    if now < nextKillAuraTime then return end
-    nextKillAuraTime = now + 0.1
-
-    if settings.RequireMouseDown and not ismouse1pressed() then 
-        Attacking = false
-        return
-    end
-
-    local weapon = getAttackData()
-    Attacking = false
-    
-    if weapon then
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        
-        if root then
-            local localfacing = root.CFrame.LookVector * Vector3.new(1, 0, 1)
-            local targetsList = {}
-
-            for _, data in pairs(trackedObjects) do
-                if data.part and data.part.Parent then
-                    if data.obj == char or data.obj.Name == LocalPlayer.Name then
-                        continue
-                    end
-
-                    local isPlayer = (data.espType == "Player")
-                    local isEntity = (data.espType == "Entity")
-
-                    if isPlayer or (isEntity and settings.TargetEntities) then
-                        local humanoid = data.part.Parent:FindFirstChildWhichIsA("Humanoid")
-                        if humanoid and humanoid.Health > 0 then
-                            if isPlayer and settings.TeamCheck then
-                                local targetPlrInstance = Players:FindFirstChild(data.obj.Name)
-                                if targetPlrInstance and targetPlrInstance.Team == LocalPlayer.Team then
-                                    continue
-                                end
-                            end
-
-                            local delta = (data.part.Position - root.Position)
-                            local dist = delta.Magnitude
-
-                            if dist <= settings.SwingRange then
-                                local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-                                if angle <= (math.rad(settings.AngleValue) / 2) then
-                                    table.insert(targetsList, {
-                                        instance = data.part.Parent,
-                                        part = data.part,
-                                        distance = dist
-                                    })
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-
-            table.sort(targetsList, function(a, b) return a.distance < b.distance end)
-
-            for _, targetData in ipairs(targetsList) do
-                Attacking = true
-
-                if settings.FaceTarget then
-                    local vec = targetData.part.Position * Vector3.new(1, 0, 1)
-                    local targetCFrame = CFrame.lookAt(root.Position, Vector3.new(vec.X, root.Position.Y, vec.Z))
-                    root.CFrame = root.CFrame:Lerp(targetCFrame, 0.25)
-                end
-
-                local wallBlocked = false
-                if settings.WallCheck and canRaycast then
-                    local rayDir = (targetData.part.Position - root.Position)
-                    local ok, hit = pcall(function()
-                        return workspace:Raycast(root.Position + rayDir.Unit * 1.5, rayDir)
-                    end)
-                    if ok and hit and hit.Instance then
-                        local inst = hit.Instance
-                        if inst and not inst:IsDescendantOf(targetData.instance) and not inst:IsDescendantOf(char) then
-                            wallBlocked = true
-                        end
-                    end
-                end
-
-                if not wallBlocked and targetData.distance <= settings.SwingRange then
-                    local dir = CFrame.lookAt(root.Position, targetData.part.Position).LookVector
-                    local pos = root.Position + dir * math.max(targetData.distance - 14.399, 0)
-
-                    SwordHitEvent:FireServer({
-                        chargedAttack = { chargeRatio = 0 },
-                        entityInstance = targetData.instance,
-                        validate = {
-                            selfPosition = { value = pos },
-                            targetPosition = { value = targetData.part.Position }
-                        },
-                        weapon = weapon
-                    })
-                end
-            end
-        end
-    end
 end
 
 local function runAutoKit()
