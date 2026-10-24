@@ -80,10 +80,10 @@ local drag,slide,popup,capture=nil,nil,nil,nil
 local dialog=nil
 local contentClip=nil
 local scrollDrag=nil
-app.Overflow="Pages"
+app.Overflow="Scroll"
 function app:SetOverflow(mode)
- assert(mode=="Scroll" or mode=="Pages","Overflow must be Scroll or Pages")
- self.Overflow=mode;scrollDrag=nil;return self
+  assert(mode=="Scroll" or mode=="Pages","Overflow must be Scroll or Pages")
+  self.Overflow=mode;scrollDrag=nil;return self
 end
 local search=nil
 local tooltip=nil
