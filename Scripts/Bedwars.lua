@@ -19,11 +19,13 @@ end
 
 local LibSource
 if _G.developer then
-    LibSource = readfile("rise/libraries/RiseUI.lua")
+    LibSource = readfile("rise/libraries/JDUI.lua")
 else
-    LibSource = game:HttpGet("https://raw.githubusercontent.com/rconsoIe2/MatchaLuauVM/refs/heads/main/Libraries/RiseUI.lua")
+    LibSource = game:HttpGet("https://raw.githubusercontent.com/rconsoIe2/MatchaLuauVM/refs/heads/main/Libraries/JDUI.lua")
 end
-local Lib = loadstring(LibSource)() or RiseUI
+local Lib = loadstring(LibSource)() or JDUI
+Lib:SetTitle("Rise")
+Lib:SetSubtitle("Bedwars")
 local HttpService = game:GetService("HttpService")
 
 local settings = {
@@ -91,26 +93,23 @@ end
 
 loadConfig()
 
-local win = Lib:CreateWindow({ 
-    title = "Rise", 
-    size = Vector2.new(560, 400) 
-})
+Lib:SetTitle("Rise")
+Lib:SetSubtitle("Bedwars")
 
-local blatantTab = win:Tab("Blatant")
-local blatantSec = blatantTab:Section("Combat", "Left")
-local killAuraCategory = blatantSec:Category("Kill Aura")
+local blatantTab = Lib:AddTab({ Title = "Blatant" })
+local killAuraIsland = blatantTab:AddIsland({ Title = "Kill Aura" })
 
-local tab = win:Tab("Utility")
-local sec = tab:Section("ESP", "Left")
-local gameEsp = sec:Category("Game ESP")
-local kitEsp = sec:Category("Kit ESP")
-local itemEsp = sec:Category("Items ESP")
-local espOptions = sec:Category("Options")
+local utilTab = Lib:AddTab({ Title = "Utility" })
+local espIsland = utilTab:AddIsland({ Title = "ESP" })
+local gameEsp = espIsland
+local kitEsp = espIsland
+local itemEsp = espIsland
+local espOptions = espIsland
 
-local autoKitSec = tab:Section("Automation", "Right")
-local autoKitCategory = autoKitSec:Category("Auto Kit")
-local autoVoidDropCategory = autoKitSec:Category("Auto Void Drop")
-local autoFishingCategory = autoKitSec:Category("Auto Fisher")
+local autoIsland = utilTab:AddIsland({ Title = "Automation" })
+local autoKitCategory = autoIsland
+local autoVoidDropCategory = autoIsland
+local autoFishingCategory = autoIsland
 
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -930,7 +929,6 @@ local function runAutoVoidDrop()
     end
 end
 
--- Auto Fisher (memory position hook)
 local HttpService = game:GetService("HttpService")
 
 local OFF_POS = 0x10C
@@ -1047,48 +1045,42 @@ local function runAutoFisher()
     end
 end
 
-killAuraCategory:Toggle("Enabled", settings.Killaura, function(state) settings.Killaura = state saveConfig() end)
-killAuraCategory:Toggle("Target Entities", settings.TargetEntities, function(state) settings.TargetEntities = state saveConfig() end)
-killAuraCategory:Toggle("Team Check", settings.TeamCheck, function(state) settings.TeamCheck = state saveConfig() end)
-killAuraCategory:Slider("Swing Range", settings.SwingRange, 1, 1, 28, function(value) settings.SwingRange = value saveConfig() end)
-killAuraCategory:Slider("Max Angle", settings.AngleValue, 1, 1, 360, function(value) settings.AngleValue = value saveConfig() end)
-killAuraCategory:Toggle("Require Mouse Down", settings.RequireMouseDown, function(state) settings.RequireMouseDown = state saveConfig() end)
-killAuraCategory:Toggle("No Swing", settings.NoSwing, function(state) settings.NoSwing = state saveConfig() end)
-killAuraCategory:Toggle("Face Target", settings.FaceTarget, function(state) settings.FaceTarget = state saveConfig() end)
-killAuraCategory:Toggle("Limit to Items", settings.LimitToItems, function(state) settings.LimitToItems = state saveConfig() end)
-killAuraCategory:Toggle("SwingOnly", settings.SwingOnly, function(state) settings.SwingOnly = state saveConfig() end)
-killAuraCategory:Toggle("Wall Check", settings.WallCheck, function(state) settings.WallCheck = state saveConfig() end)
+killAuraIsland:AddToggle({ Title = "Enabled", Default = settings.Killaura, Callback = function(state) settings.Killaura = state saveConfig() end })
+killAuraIsland:AddToggle({ Title = "Target Entities", Default = settings.TargetEntities, Callback = function(state) settings.TargetEntities = state saveConfig() end })
+killAuraIsland:AddToggle({ Title = "Team Check", Default = settings.TeamCheck, Callback = function(state) settings.TeamCheck = state saveConfig() end })
+killAuraIsland:AddSlider({ Title = "Swing Range", Default = settings.SwingRange, Min = 1, Step = 1, Max = 28, Callback = function(value) settings.SwingRange = value saveConfig() end })
+killAuraIsland:AddSlider({ Title = "Max Angle", Default = settings.AngleValue, Min = 1, Step = 1, Max = 360, Callback = function(value) settings.AngleValue = value saveConfig() end })
+killAuraIsland:AddToggle({ Title = "Require Mouse Down", Default = settings.RequireMouseDown, Callback = function(state) settings.RequireMouseDown = state saveConfig() end })
+killAuraIsland:AddToggle({ Title = "No Swing", Default = settings.NoSwing, Callback = function(state) settings.NoSwing = state saveConfig() end })
+killAuraIsland:AddToggle({ Title = "Face Target", Default = settings.FaceTarget, Callback = function(state) settings.FaceTarget = state saveConfig() end })
+killAuraIsland:AddToggle({ Title = "Limit to Items", Default = settings.LimitToItems, Callback = function(state) settings.LimitToItems = state saveConfig() end })
+killAuraIsland:AddToggle({ Title = "SwingOnly", Default = settings.SwingOnly, Callback = function(state) settings.SwingOnly = state saveConfig() end })
+killAuraIsland:AddToggle({ Title = "Wall Check", Default = settings.WallCheck, Callback = function(state) settings.WallCheck = state saveConfig() end })
 
-if autoKitCategory then
-    autoKitCategory:Toggle("Enabled", settings.AutoKit, function(state) settings.AutoKit = state saveConfig() end)
-    autoKitCategory:Slider("Collection Range", settings.AutoKitRange, 5, 1, 20, function(value) settings.AutoKitRange = value saveConfig() end)
-end
+autoIsland:AddToggle({ Title = "Auto Kit Enabled", Default = settings.AutoKit, Callback = function(state) settings.AutoKit = state saveConfig() end })
+autoIsland:AddSlider({ Title = "Auto Kit Range", Default = settings.AutoKitRange, Min = 5, Step = 1, Max = 20, Callback = function(value) settings.AutoKitRange = value saveConfig() end })
+autoIsland:AddToggle({ Title = "Auto Void Drop", Default = settings.AutoVoidDrop, Callback = function(state) settings.AutoVoidDrop = state saveConfig() end })
+autoIsland:AddToggle({ Title = "Owl Check", Default = settings.OwlCheck, Callback = function(state) settings.OwlCheck = state saveConfig() end })
+autoIsland:AddToggle({ Title = "Auto Fisher", Default = settings.Fishing, Callback = function(state) settings.Fishing = state saveConfig() end })
+autoIsland:AddToggle({ Title = "Fisher Instant (Memory)", Default = settings.Instant, Callback = function(state) settings.Instant = state saveConfig() end })
+autoIsland:AddToggle({ Title = "Fisher Instant (Remote)", Default = settings.FishingRemote, Callback = function(state) settings.FishingRemote = state saveConfig() end })
 
-autoVoidDropCategory:Toggle("Enabled", settings.AutoVoidDrop, function(state) settings.AutoVoidDrop = state saveConfig() end)
-autoVoidDropCategory:Toggle("Owl Check", settings.OwlCheck, function(state) settings.OwlCheck = state saveConfig() end)
-autoFishingCategory:Toggle("Enabled", settings.Fishing, function(state) settings.Fishing = state saveConfig() end)
-autoFishingCategory:Toggle("Instant (Memory)", settings.Instant, function(state) settings.Instant = state saveConfig() notify("Rise", "memory autofisher done") end)
-autoFishingCategory:Toggle("Instant (Remote)", settings.FishingRemote, function(state) settings.FishingRemote = state saveConfig() end)
-
-gameEsp:Toggle("Player ESP", settings.Player, function(state) settings.Player = state saveConfig() end)
-gameEsp:Toggle("Bed ESP", settings.Bed, function(state) settings.Bed = state saveConfig() end)
-gameEsp:Toggle("Entity ESP", settings.Entity, function(state) settings.Entity = state saveConfig() end)
-gameEsp:Toggle("Show Kit", settings.ShowKit, function(state) settings.ShowKit = state saveConfig() end)
-gameEsp:Toggle("Show Equipped", settings.ShowEquipped, function(state) settings.ShowEquipped = state saveConfig() end)
-
-kitEsp:Toggle("Metal ESP", settings.Metal, function(state) settings.Metal = state saveConfig() end)
-kitEsp:Toggle("Bee ESP", settings.Bee, function(state) settings.Bee = state saveConfig() end)
-kitEsp:Toggle("Eldertree ESP", settings.Eldertree, function(state) settings.Eldertree = state saveConfig() end)
-kitEsp:Toggle("Star ESP", settings.Star, function(state) settings.Star = state saveConfig() end)
-kitEsp:Toggle("DeathAdder ESP", settings.AlchemyCrystal, function(state) settings.AlchemyCrystal = state saveConfig() end)
-
-itemEsp:Toggle("Iron ESP", settings.iron, function(state) settings.iron = state saveConfig() end)
-itemEsp:Toggle("Diamond ESP", settings.diamond, function(state) settings.diamond = state saveConfig() end)
-itemEsp:Toggle("Emerald ESP", settings.emerald, function(state) settings.emerald = state saveConfig() end)
-itemEsp:Toggle("Show Amount", settings.Amount, function(state) settings.Amount = state saveConfig() end)
-
-espOptions:Toggle("Visible Only", settings.Visible, function(state) settings.Visible = state saveConfig() end)
-espOptions:Slider("Distance", settings.Distance, 100, 1, 2000, function(value) settings.Distance = value saveConfig() end)
+espIsland:AddToggle({ Title = "Player ESP", Default = settings.Player, Callback = function(state) settings.Player = state saveConfig() end })
+espIsland:AddToggle({ Title = "Bed ESP", Default = settings.Bed, Callback = function(state) settings.Bed = state saveConfig() end })
+espIsland:AddToggle({ Title = "Entity ESP", Default = settings.Entity, Callback = function(state) settings.Entity = state saveConfig() end })
+espIsland:AddToggle({ Title = "Show Kit", Default = settings.ShowKit, Callback = function(state) settings.ShowKit = state saveConfig() end })
+espIsland:AddToggle({ Title = "Show Equipped", Default = settings.ShowEquipped, Callback = function(state) settings.ShowEquipped = state saveConfig() end })
+espIsland:AddToggle({ Title = "Metal ESP", Default = settings.Metal, Callback = function(state) settings.Metal = state saveConfig() end })
+espIsland:AddToggle({ Title = "Bee ESP", Default = settings.Bee, Callback = function(state) settings.Bee = state saveConfig() end })
+espIsland:AddToggle({ Title = "Eldertree ESP", Default = settings.Eldertree, Callback = function(state) settings.Eldertree = state saveConfig() end })
+espIsland:AddToggle({ Title = "Star ESP", Default = settings.Star, Callback = function(state) settings.Star = state saveConfig() end })
+espIsland:AddToggle({ Title = "DeathAdder ESP", Default = settings.AlchemyCrystal, Callback = function(state) settings.AlchemyCrystal = state saveConfig() end })
+espIsland:AddToggle({ Title = "Iron ESP", Default = settings.iron, Callback = function(state) settings.iron = state saveConfig() end })
+espIsland:AddToggle({ Title = "Diamond ESP", Default = settings.diamond, Callback = function(state) settings.diamond = state saveConfig() end })
+espIsland:AddToggle({ Title = "Emerald ESP", Default = settings.emerald, Callback = function(state) settings.emerald = state saveConfig() end })
+espIsland:AddToggle({ Title = "Show Amount", Default = settings.Amount, Callback = function(state) settings.Amount = state saveConfig() end })
+espIsland:AddToggle({ Title = "Visible Only", Default = settings.Visible, Callback = function(state) settings.Visible = state saveConfig() end })
+espIsland:AddSlider({ Title = "Distance", Default = settings.Distance, Min = 100, Step = 1, Max = 2000, Callback = function(value) settings.Distance = value saveConfig() end })
 
 local nextScanTime = 0
 local nextAutoKitTime = 0
