@@ -45,6 +45,7 @@ local settings = {
     Visible = false,
     Amount = false,
     Distance = 500,
+    EspSize = 50,
     TargetEntities = true,
     TeamCheck = true,
     SwingRange = 28,
@@ -621,7 +622,10 @@ RunService.RenderStepped:Connect(function()
                 data.imageSet = true
             end
 
-            local size = data.imgSize
+            local scaledPx = math.floor(44 * (settings.EspSize / 50))
+            local size = Vector2.new(scaledPx, scaledPx)
+            data.img.Size = size
+
             data.bg.Size = Vector2.new(size.X + 10, size.Y + 10)
             data.bg.Position = Vector2.new(pos.X - (size.X + 10) * 0.5, pos.Y - (size.Y + 10) * 0.5)
             data.bg.Visible = true
@@ -820,7 +824,6 @@ local function runAutoVoidDrop()
     end
 end
 
--- Auto Fisher (memory position hook)
 local HttpService = game:GetService("HttpService")
 
 local OFF_POS = 0x10C
@@ -1024,6 +1027,7 @@ itemEsp:AddToggle({ Title = "Show Amount", Default = settings.Amount, Callback =
 
 espOptions:AddToggle({ Title = "Visible Only", Default = settings.Visible, Callback = function(state) settings.Visible = state saveConfig() end })
 espOptions:AddSlider({ Title = "Distance", Default = settings.Distance, Min = 100, Step = 1, Max = 2000, Callback = function(value) settings.Distance = value saveConfig() end })
+espOptions:AddSlider({ Title = "ESP Size", Default = settings.EspSize, Min = 0, Step = 1, Max = 100, Callback = function(value) settings.EspSize = value saveConfig() end })
 
 local nextScanTime = 0
 local nextAutoKitTime = 0
