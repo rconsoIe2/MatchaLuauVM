@@ -95,16 +95,13 @@ loadConfig()
 
 Lib:SetTitle("Rise")
 Lib:SetSubtitle("Bedwars")
-
-local blatantTab = Lib:AddTab({ Title = "Blatant" })
-local killAuraIsland = blatantTab:AddIsland({ Title = "Kill Aura" })
+Lib:SetOpen(true)
 
 local utilTab = Lib:AddTab({ Title = "Utility" })
-local espIsland = utilTab:AddIsland({ Title = "ESP" })
-local gameEsp = espIsland
-local kitEsp = espIsland
-local itemEsp = espIsland
-local espOptions = espIsland
+local gameEsp = utilTab:AddIsland({ Title = "Game ESP" })
+local kitEsp = utilTab:AddIsland({ Title = "Kit ESP" })
+local itemEsp = utilTab:AddIsland({ Title = "Items ESP" })
+local espOptions = utilTab:AddIsland({ Title = "Options" })
 
 local autoIsland = utilTab:AddIsland({ Title = "Automation" })
 local autoKitCategory = autoIsland
@@ -929,6 +926,7 @@ local function runAutoVoidDrop()
     end
 end
 
+-- Auto Fisher (memory position hook)
 local HttpService = game:GetService("HttpService")
 
 local OFF_POS = 0x10C
@@ -981,6 +979,8 @@ end
 
 local lastInstantApp = nil
 local fisherGcCache = nil
+local fisherGcApplied = false
+local fisherGcOrig = nil
 
 local FISHER_GC_KEYS = { "fillAmount", "drainAmount" }
 local FISHER_GC_VALUES = {
@@ -990,11 +990,60 @@ local FISHER_GC_VALUES = {
 
 local function applyFisherGc()
     if not (getgc and applygc) then return end
+    if fisherGcApplied then return end
     if not fisherGcCache then
         fisherGcCache = getgc(FISHER_GC_KEYS)
     end
+    if fisherGcCache and #fisherGcCache > 0 and not fisherGcOrig then
+        local orig = {}
+        for i = 1, #fisherGcCache do
+            local obj = fisherGcCache[i]
+            if type(obj) == "table" then
+                orig[i] = {}
+                if obj.fillAmount ~= nil then orig[i].fillAmount = obj.fillAmount end
+                if obj.drainAmount ~= nil then orig[i].drainAmount = obj.drainAmount end
+            else
+                orig[i] = nil
+            end
+        end
+        fisherGcOrig = orig
+    end
     pcall(function() applygc(fisherGcCache, FISHER_GC_VALUES) end)
-    notify("Rise", "memory autofisher done")
+    fisherGcApplied = true
+    if Lib and Lib.Notify then
+        pcall(function() Lib:Notify({ Title = "Rise", Content = "memory autofisher applied" }) end)
+    else
+        pcall(function() notify("Rise", "memory autofisher applied") end)
+    end
+end
+
+local function restoreFisherGc()
+    if not (getgc and applygc) then
+        fisherGcApplied = false
+        return
+    end
+    if not fisherGcApplied then return end
+    if not fisherGcCache then
+        fisherGcCache = getgc(FISHER_GC_KEYS)
+    end
+    if fisherGcOrig and fisherGcCache then
+        for i = 1, #fisherGcCache do
+            local obj = fisherGcCache[i]
+            local orig = fisherGcOrig[i]
+            if type(obj) == "table" and type(orig) == "table" then
+                pcall(function()
+                    if orig.fillAmount ~= nil then obj.fillAmount = orig.fillAmount else obj.fillAmount = nil end
+                    if orig.drainAmount ~= nil then obj.drainAmount = orig.drainAmount else obj.drainAmount = nil end
+                end)
+            end
+        end
+    end
+    fisherGcApplied = false
+    if Lib and Lib.Notify then
+        pcall(function() Lib:Notify({ Title = "Rise", Content = "memory autofisher restored" }) end)
+    else
+        pcall(function() notify("Rise", "memory autofisher restored") end)
+    end
 end
 
 local function runAutoFisher()
@@ -1004,7 +1053,6 @@ local function runAutoFisher()
 
     if not app then
         lastInstantApp = nil
-        fisherGcCache = nil
         return
     end
 
@@ -1040,8 +1088,10 @@ local function runAutoFisher()
         end
     end
 
-    if settings.Instant then
+    if settings.Instant and not fisherGcApplied then
         applyFisherGc()
+    elseif not settings.Instant and fisherGcApplied then
+        restoreFisherGc()
     end
 end
 
@@ -1062,25 +1112,36 @@ autoIsland:AddSlider({ Title = "Auto Kit Range", Default = settings.AutoKitRange
 autoIsland:AddToggle({ Title = "Auto Void Drop", Default = settings.AutoVoidDrop, Callback = function(state) settings.AutoVoidDrop = state saveConfig() end })
 autoIsland:AddToggle({ Title = "Owl Check", Default = settings.OwlCheck, Callback = function(state) settings.OwlCheck = state saveConfig() end })
 autoIsland:AddToggle({ Title = "Auto Fisher", Default = settings.Fishing, Callback = function(state) settings.Fishing = state saveConfig() end })
-autoIsland:AddToggle({ Title = "Fisher Instant (Memory)", Default = settings.Instant, Callback = function(state) settings.Instant = state saveConfig() end })
+autoIsland:AddToggle({ Title = "Fisher Instant (Memory)", Default = settings.Instant, Callback = function(state)
+    settings.Instant = state
+    saveConfig()
+    if state then
+        applyFisherGc()
+    else
+        restoreFisherGc()
+    end
+end })
 autoIsland:AddToggle({ Title = "Fisher Instant (Remote)", Default = settings.FishingRemote, Callback = function(state) settings.FishingRemote = state saveConfig() end })
 
-espIsland:AddToggle({ Title = "Player ESP", Default = settings.Player, Callback = function(state) settings.Player = state saveConfig() end })
-espIsland:AddToggle({ Title = "Bed ESP", Default = settings.Bed, Callback = function(state) settings.Bed = state saveConfig() end })
-espIsland:AddToggle({ Title = "Entity ESP", Default = settings.Entity, Callback = function(state) settings.Entity = state saveConfig() end })
-espIsland:AddToggle({ Title = "Show Kit", Default = settings.ShowKit, Callback = function(state) settings.ShowKit = state saveConfig() end })
-espIsland:AddToggle({ Title = "Show Equipped", Default = settings.ShowEquipped, Callback = function(state) settings.ShowEquipped = state saveConfig() end })
-espIsland:AddToggle({ Title = "Metal ESP", Default = settings.Metal, Callback = function(state) settings.Metal = state saveConfig() end })
-espIsland:AddToggle({ Title = "Bee ESP", Default = settings.Bee, Callback = function(state) settings.Bee = state saveConfig() end })
-espIsland:AddToggle({ Title = "Eldertree ESP", Default = settings.Eldertree, Callback = function(state) settings.Eldertree = state saveConfig() end })
-espIsland:AddToggle({ Title = "Star ESP", Default = settings.Star, Callback = function(state) settings.Star = state saveConfig() end })
-espIsland:AddToggle({ Title = "DeathAdder ESP", Default = settings.AlchemyCrystal, Callback = function(state) settings.AlchemyCrystal = state saveConfig() end })
-espIsland:AddToggle({ Title = "Iron ESP", Default = settings.iron, Callback = function(state) settings.iron = state saveConfig() end })
-espIsland:AddToggle({ Title = "Diamond ESP", Default = settings.diamond, Callback = function(state) settings.diamond = state saveConfig() end })
-espIsland:AddToggle({ Title = "Emerald ESP", Default = settings.emerald, Callback = function(state) settings.emerald = state saveConfig() end })
-espIsland:AddToggle({ Title = "Show Amount", Default = settings.Amount, Callback = function(state) settings.Amount = state saveConfig() end })
-espIsland:AddToggle({ Title = "Visible Only", Default = settings.Visible, Callback = function(state) settings.Visible = state saveConfig() end })
-espIsland:AddSlider({ Title = "Distance", Default = settings.Distance, Min = 100, Step = 1, Max = 2000, Callback = function(value) settings.Distance = value saveConfig() end })
+gameEsp:AddToggle({ Title = "Player ESP", Default = settings.Player, Callback = function(state) settings.Player = state saveConfig() end })
+gameEsp:AddToggle({ Title = "Bed ESP", Default = settings.Bed, Callback = function(state) settings.Bed = state saveConfig() end })
+gameEsp:AddToggle({ Title = "Entity ESP", Default = settings.Entity, Callback = function(state) settings.Entity = state saveConfig() end })
+gameEsp:AddToggle({ Title = "Show Kit", Default = settings.ShowKit, Callback = function(state) settings.ShowKit = state saveConfig() end })
+gameEsp:AddToggle({ Title = "Show Equipped", Default = settings.ShowEquipped, Callback = function(state) settings.ShowEquipped = state saveConfig() end })
+
+kitEsp:AddToggle({ Title = "Metal ESP", Default = settings.Metal, Callback = function(state) settings.Metal = state saveConfig() end })
+kitEsp:AddToggle({ Title = "Bee ESP", Default = settings.Bee, Callback = function(state) settings.Bee = state saveConfig() end })
+kitEsp:AddToggle({ Title = "Eldertree ESP", Default = settings.Eldertree, Callback = function(state) settings.Eldertree = state saveConfig() end })
+kitEsp:AddToggle({ Title = "Star ESP", Default = settings.Star, Callback = function(state) settings.Star = state saveConfig() end })
+kitEsp:AddToggle({ Title = "DeathAdder ESP", Default = settings.AlchemyCrystal, Callback = function(state) settings.AlchemyCrystal = state saveConfig() end })
+
+itemEsp:AddToggle({ Title = "Iron ESP", Default = settings.iron, Callback = function(state) settings.iron = state saveConfig() end })
+itemEsp:AddToggle({ Title = "Diamond ESP", Default = settings.diamond, Callback = function(state) settings.diamond = state saveConfig() end })
+itemEsp:AddToggle({ Title = "Emerald ESP", Default = settings.emerald, Callback = function(state) settings.emerald = state saveConfig() end })
+itemEsp:AddToggle({ Title = "Show Amount", Default = settings.Amount, Callback = function(state) settings.Amount = state saveConfig() end })
+
+espOptions:AddToggle({ Title = "Visible Only", Default = settings.Visible, Callback = function(state) settings.Visible = state saveConfig() end })
+espOptions:AddSlider({ Title = "Distance", Default = settings.Distance, Min = 100, Step = 1, Max = 2000, Callback = function(value) settings.Distance = value saveConfig() end })
 
 local nextScanTime = 0
 local nextAutoKitTime = 0
@@ -1127,8 +1188,12 @@ task.spawn(function()
             updateLowestPoint()
         end
 
-        runKillAura()
-
         task.wait(1 / 60)
     end
 end)
+
+if Lib and Lib.Notify then
+    pcall(function() Lib:Notify({ Title = "Rise", Content = "Press Right-Shift to toggle the UI" }) end)
+else
+    pcall(function() notify("Rise", "Press Right-Shift to toggle the UI") end)
+end
