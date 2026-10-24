@@ -1095,18 +1095,6 @@ local function runAutoFisher()
     end
 end
 
-killAuraIsland:AddToggle({ Title = "Enabled", Default = settings.Killaura, Callback = function(state) settings.Killaura = state saveConfig() end })
-killAuraIsland:AddToggle({ Title = "Target Entities", Default = settings.TargetEntities, Callback = function(state) settings.TargetEntities = state saveConfig() end })
-killAuraIsland:AddToggle({ Title = "Team Check", Default = settings.TeamCheck, Callback = function(state) settings.TeamCheck = state saveConfig() end })
-killAuraIsland:AddSlider({ Title = "Swing Range", Default = settings.SwingRange, Min = 1, Step = 1, Max = 28, Callback = function(value) settings.SwingRange = value saveConfig() end })
-killAuraIsland:AddSlider({ Title = "Max Angle", Default = settings.AngleValue, Min = 1, Step = 1, Max = 360, Callback = function(value) settings.AngleValue = value saveConfig() end })
-killAuraIsland:AddToggle({ Title = "Require Mouse Down", Default = settings.RequireMouseDown, Callback = function(state) settings.RequireMouseDown = state saveConfig() end })
-killAuraIsland:AddToggle({ Title = "No Swing", Default = settings.NoSwing, Callback = function(state) settings.NoSwing = state saveConfig() end })
-killAuraIsland:AddToggle({ Title = "Face Target", Default = settings.FaceTarget, Callback = function(state) settings.FaceTarget = state saveConfig() end })
-killAuraIsland:AddToggle({ Title = "Limit to Items", Default = settings.LimitToItems, Callback = function(state) settings.LimitToItems = state saveConfig() end })
-killAuraIsland:AddToggle({ Title = "SwingOnly", Default = settings.SwingOnly, Callback = function(state) settings.SwingOnly = state saveConfig() end })
-killAuraIsland:AddToggle({ Title = "Wall Check", Default = settings.WallCheck, Callback = function(state) settings.WallCheck = state saveConfig() end })
-
 autoIsland:AddToggle({ Title = "Auto Kit Enabled", Default = settings.AutoKit, Callback = function(state) settings.AutoKit = state saveConfig() end })
 autoIsland:AddSlider({ Title = "Auto Kit Range", Default = settings.AutoKitRange, Min = 5, Step = 1, Max = 20, Callback = function(value) settings.AutoKitRange = value saveConfig() end })
 autoIsland:AddToggle({ Title = "Auto Void Drop", Default = settings.AutoVoidDrop, Callback = function(state) settings.AutoVoidDrop = state saveConfig() end })
